@@ -227,8 +227,8 @@ struct game_drawstate {
     int flashing;
     int *textx, *texty;
     char *lines;
-    char *clue_error;
-    char *clue_satisfied;
+    int *needed_lines_yes;
+    int *needed_lines_no;
 };
 
 static char *validate_desc(const game_params *params, const char *desc);
@@ -902,15 +902,15 @@ static game_drawstate *game_new_drawstate(drawing *dr, const game_state *state)
     ds->tilesize = 0;
     ds->started = 0;
     ds->lines = snewn(num_edges, char);
-    ds->clue_error = snewn(num_faces, char);
-    ds->clue_satisfied = snewn(num_faces, char);
+    ds->needed_lines_yes = snewn(num_faces, int);
+    ds->needed_lines_no = snewn(num_faces, int);
     ds->textx = snewn(num_faces, int);
     ds->texty = snewn(num_faces, int);
     ds->flashing = 0;
 
     memset(ds->lines, LINE_UNKNOWN, num_edges);
-    memset(ds->clue_error, 0, num_faces);
-    memset(ds->clue_satisfied, 0, num_faces);
+    memset(ds->needed_lines_yes, 0, num_faces);
+    memset(ds->needed_lines_no, 0, num_faces);
     for (i = 0; i < num_faces; i++)
         ds->textx[i] = ds->texty[i] = -1;
 
@@ -921,8 +921,8 @@ static void game_free_drawstate(drawing *dr, game_drawstate *ds)
 {
     sfree(ds->textx);
     sfree(ds->texty);
-    sfree(ds->clue_error);
-    sfree(ds->clue_satisfied);
+    sfree(ds->needed_lines_yes);
+    sfree(ds->needed_lines_no);
     sfree(ds->lines);
     sfree(ds);
 }
@@ -3001,15 +3001,19 @@ static void game_redraw_clue(drawing *dr, game_drawstate *ds,
     grid_face *f = g->faces + i;
     int x, y;
     char c[20];
+    int needed_lines_yes = ds->needed_lines_yes[i];
+    int needed_lines_no = ds->needed_lines_no[i];
+    int clue_mistake = needed_lines_yes < 0 || needed_lines_no < 0;
+    int clue_satisfied = needed_lines_yes == 0 && needed_lines_no == 0;
 
-    sprintf(c, "%d", state->clues[i]);
+    sprintf(c, "%d", needed_lines_yes);
 
     face_text_pos(ds, g, f, &x, &y);
     draw_text(dr, x, y,
 	      FONT_VARIABLE, ds->tilesize/2,
 	      ALIGN_VCENTRE | ALIGN_HCENTRE,
-	      ds->clue_error[i] ? COL_MISTAKE :
-	      ds->clue_satisfied[i] ? COL_SATISFIED : COL_FOREGROUND, c);
+	      clue_mistake ? COL_MISTAKE :
+	      clue_satisfied ? COL_SATISFIED : COL_FOREGROUND, c);
 }
 
 static void edge_bbox(game_drawstate *ds, grid *g, grid_edge *e,
@@ -3205,21 +3209,17 @@ static void game_redraw(drawing *dr, game_drawstate *ds,
     for (i = 0; i < g->num_faces; i++) {
         grid_face *f = g->faces + i;
         int sides = f->order;
-        int clue_mistake;
-        int clue_satisfied;
         int n = state->clues[i];
+        int needed_lines_yes = n           - face_order(state, i, LINE_YES);
+        int needed_lines_no  = (sides - n) - face_order(state, i, LINE_NO );
+
         if (n < 0)
             continue;
 
-        clue_mistake = (face_order(state, i, LINE_YES) > n ||
-                        face_order(state, i, LINE_NO ) > (sides-n));
-        clue_satisfied = (face_order(state, i, LINE_YES) == n &&
-                          face_order(state, i, LINE_NO ) == (sides-n));
-
-        if (clue_mistake != ds->clue_error[i] ||
-            clue_satisfied != ds->clue_satisfied[i]) {
-            ds->clue_error[i] = clue_mistake;
-            ds->clue_satisfied[i] = clue_satisfied;
+        if (needed_lines_yes != ds->needed_lines_yes[i] ||
+            needed_lines_no != ds->needed_lines_no[i]) {
+            ds->needed_lines_yes[i] = needed_lines_yes;
+            ds->needed_lines_no [i] = needed_lines_no;
             if (nfaces == REDRAW_OBJECTS_LIMIT)
                 redraw_everything = TRUE;
             else

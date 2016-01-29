@@ -3118,7 +3118,7 @@ static void game_redraw(drawing *dr, game_drawstate *ds,
                 v = GRID(state, x, y);
                 if (v & G_ISLAND) {
                     is = INDEX(state, gridi, x, y);
-                    draw_island_tile(dr, ds, x, y, is->count, newval);
+                    draw_island_tile(dr, ds, x, y, is->count - island_countbridges(is), newval);
 
                     /*
                      * If this tile is right at the edge of the grid,

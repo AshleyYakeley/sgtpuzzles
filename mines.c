@@ -3039,8 +3039,9 @@ static void game_redraw(drawing *dr, game_drawstate *ds,
                             flags++;
                     }
 
-                if (flags > v)
-                    v |= 32;
+                v -= flags;
+                if (v < 0)
+                    v = 32;
             }
 
 	    if ((v == -2 || v == -3) &&

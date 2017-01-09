@@ -1807,13 +1807,13 @@ static float *game_colours(frontend *fe, int *ncolours)
     ret[COL_INK * 3 + 1] = 0.0F;
     ret[COL_INK * 3 + 2] = 0.0F;
 
-    ret[COL_SLANT1 * 3 + 0] = 0.0F;
-    ret[COL_SLANT1 * 3 + 1] = 0.0F;
+    ret[COL_SLANT1 * 3 + 0] = 0.5F;
+    ret[COL_SLANT1 * 3 + 1] = 0.5F;
     ret[COL_SLANT1 * 3 + 2] = 0.0F;
 
     ret[COL_SLANT2 * 3 + 0] = 0.0F;
-    ret[COL_SLANT2 * 3 + 1] = 0.0F;
-    ret[COL_SLANT2 * 3 + 2] = 0.0F;
+    ret[COL_SLANT2 * 3 + 1] = 0.5F;
+    ret[COL_SLANT2 * 3 + 2] = 0.5F;
 
     ret[COL_ERROR * 3 + 0] = 1.0F;
     ret[COL_ERROR * 3 + 1] = 0.0F;

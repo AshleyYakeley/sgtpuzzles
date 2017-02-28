@@ -1795,13 +1795,13 @@ static float *game_colours(frontend *fe, int *ncolours)
     /* CURSOR colour is a background highlight. */
     game_mkhighlight(fe, ret, COL_BACKGROUND, COL_CURSOR, -1);
 
-    ret[COL_FILLEDSQUARE * 3 + 0] = ret[COL_BACKGROUND * 3 + 0];
-    ret[COL_FILLEDSQUARE * 3 + 1] = ret[COL_BACKGROUND * 3 + 1];
-    ret[COL_FILLEDSQUARE * 3 + 2] = ret[COL_BACKGROUND * 3 + 2];
+    ret[COL_FILLEDSQUARE * 3 + 0] = ret[COL_BACKGROUND * 3 + 0] * 0.9F;
+    ret[COL_FILLEDSQUARE * 3 + 1] = ret[COL_BACKGROUND * 3 + 1] * 0.9F;
+    ret[COL_FILLEDSQUARE * 3 + 2] = ret[COL_BACKGROUND * 3 + 2] * 0.9F;
 
-    ret[COL_GRID * 3 + 0] = ret[COL_BACKGROUND * 3 + 0] * 0.7F;
-    ret[COL_GRID * 3 + 1] = ret[COL_BACKGROUND * 3 + 1] * 0.7F;
-    ret[COL_GRID * 3 + 2] = ret[COL_BACKGROUND * 3 + 2] * 0.7F;
+    ret[COL_GRID * 3 + 0] = ret[COL_BACKGROUND * 3 + 0] * 0.9F;
+    ret[COL_GRID * 3 + 1] = ret[COL_BACKGROUND * 3 + 1] * 0.9F;
+    ret[COL_GRID * 3 + 2] = ret[COL_BACKGROUND * 3 + 2] * 0.9F;
 
     ret[COL_INK * 3 + 0] = 0.0F;
     ret[COL_INK * 3 + 1] = 0.0F;

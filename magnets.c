@@ -2002,8 +2002,6 @@ static void draw_num(drawing *dr, game_drawstate *ds, int rowcol, int which,
     char buf[32];
     int cx, cy, tsz;
 
-    if (num < 0) return;
-
     sprintf(buf, "%d", num);
     tsz = (strlen(buf) == 1) ? (7*TILE_SIZE/10) : (9*TILE_SIZE/10)/strlen(buf);
 
@@ -2244,8 +2242,8 @@ static void game_redraw(drawing *dr, game_drawstate *ds,
             int target = state->common->colcount[index];
             int color = get_count_color(state, COLUMN, which, i, target);
 
-            if (color != ds->colwhat[index] || !ds->started) {
-                draw_num(dr, ds, COLUMN, which, i, COL_BACKGROUND, color, target);
+            if (target >= 0) {
+                draw_num(dr, ds, COLUMN, which, i, COL_BACKGROUND, color, target - count_rowcol(state, i, COLUMN, which));
                 ds->colwhat[index] = color;
             }
         }
@@ -2254,8 +2252,8 @@ static void game_redraw(drawing *dr, game_drawstate *ds,
             int target = state->common->rowcount[index];
             int color = get_count_color(state, ROW, which, i, target);
 
-            if (color != ds->rowwhat[index] || !ds->started) {
-                draw_num(dr, ds, ROW, which, i, COL_BACKGROUND, color, target);
+            if (target >= 0) {
+                draw_num(dr, ds, ROW, which, i, COL_BACKGROUND, color, target - count_rowcol(state, i, ROW, which));
                 ds->rowwhat[index] = color;
             }
         }

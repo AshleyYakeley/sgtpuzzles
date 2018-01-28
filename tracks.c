@@ -2512,9 +2512,25 @@ static void game_redraw(drawing *dr, game_drawstate *ds, const game_state *oldst
     }
 
     for (i = 0; i < w+h; i++) {
-        if (force || (state->num_errors[i] != ds->num_errors[i])) {
+        if (1 || (state->num_errors[i] != ds->num_errors[i])) {
+            int ntrack = 0;
+            if (i < w) {
+                x = i;
+                for (y = 0; y < h; y++) {
+                    if (S_E_COUNT(state, x, y, E_TRACK) > 0 ||
+                        state->sflags[y*w+x] & S_TRACK)
+                        ntrack++;
+                }
+            } else {
+                y = i - w;
+                for (x = 0; x < w; x++) {
+                    if (S_E_COUNT(state, x, y, E_TRACK) > 0 ||
+                        state->sflags[y*w+x] & S_TRACK)
+                        ntrack++;
+                }
+            }
             ds->num_errors[i] = state->num_errors[i];
-            draw_clue(dr, ds, w, state->numbers->numbers[i], i,
+            draw_clue(dr, ds, w, state->numbers->numbers[i] - ntrack, i,
                       ds->num_errors[i] ? COL_ERROR : COL_CLUE,
 		      ds->num_errors[i] ? COL_ERROR_BACKGROUND : COL_BACKGROUND);
         }

@@ -2137,6 +2137,7 @@ enum {
     COL_TRACK, COL_TRACK_CLUE, COL_SLEEPER,
     COL_DRAGON, COL_DRAGOFF,
     COL_ERROR, COL_FLASH, COL_ERROR_BACKGROUND,
+    COL_SATISFIED,
     NCOLOURS
 };
 
@@ -2154,6 +2155,7 @@ static float *game_colours(frontend *fe, int *ncolours)
         ret[COL_GRID             * 3 + i] = 0.75F;
         ret[COL_CURSOR           * 3 + i] = 0.6F;
         ret[COL_ERROR_BACKGROUND * 3 + i] = 1.0F;
+        ret[COL_SATISFIED        * 3 + i] = 0.75F;
     }
 
     ret[COL_SLEEPER * 3 + 0] = 0.5F;
@@ -2514,12 +2516,15 @@ static void game_redraw(drawing *dr, game_drawstate *ds, const game_state *oldst
     for (i = 0; i < w+h; i++) {
         if (1 || (state->num_errors[i] != ds->num_errors[i])) {
             int ntrack = 0;
+            int nnotrack = 0;
             if (i < w) {
                 x = i;
                 for (y = 0; y < h; y++) {
                     if (S_E_COUNT(state, x, y, E_TRACK) > 0 ||
                         state->sflags[y*w+x] & S_TRACK)
                         ntrack++;
+                    if (state->sflags[y*w+x] & S_NOTRACK)
+                        nnotrack++;
                 }
             } else {
                 y = i - w;
@@ -2527,11 +2532,13 @@ static void game_redraw(drawing *dr, game_drawstate *ds, const game_state *oldst
                     if (S_E_COUNT(state, x, y, E_TRACK) > 0 ||
                         state->sflags[y*w+x] & S_TRACK)
                         ntrack++;
+                    if (state->sflags[y*w+x] & S_NOTRACK)
+                        nnotrack++;
                 }
             }
             ds->num_errors[i] = state->num_errors[i];
             draw_clue(dr, ds, w, state->numbers->numbers[i] - ntrack, i,
-                      ds->num_errors[i] ? COL_ERROR : COL_CLUE,
+                      ds->num_errors[i] ? COL_ERROR : ntrack + nnotrack == (i < w ? h : w) ? COL_SATISFIED : COL_CLUE,
 		      ds->num_errors[i] ? COL_ERROR_BACKGROUND : COL_BACKGROUND);
         }
     }

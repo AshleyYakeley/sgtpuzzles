@@ -2152,7 +2152,7 @@ static void menu_copy_event(GtkMenuItem *menuitem, gpointer data)
     if (text) {
 	write_clip(fe, text);
     } else {
-	gdk_beep();
+        gdk_display_beep(gdk_display_get_default());
     }
 }
 
@@ -2884,25 +2884,6 @@ static frontend *new_window(char *arg, int argtype, char **error)
     set_window_background(fe, 0);
 
     return fe;
-}
-
-char *fgetline(FILE *fp)
-{
-    char *ret = snewn(512, char);
-    int size = 512, len = 0;
-    while (fgets(ret + len, size - len, fp)) {
-	len += strlen(ret + len);
-	if (ret[len-1] == '\n')
-	    break;		       /* got a newline, we're done */
-	size = len + 512;
-	ret = sresize(ret, size, char);
-    }
-    if (len == 0) {		       /* first fgets returned NULL */
-	sfree(ret);
-	return NULL;
-    }
-    ret[len] = '\0';
-    return ret;
 }
 
 static void list_presets_from_menu(struct preset_menu *menu)

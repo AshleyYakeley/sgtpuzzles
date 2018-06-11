@@ -91,7 +91,7 @@ static game_params *default_params(void)
     return ret;
 }
 
-const static struct game_params keen_presets[] = {
+static const struct game_params keen_presets[] = {
     {  4, DIFF_EASY,         FALSE },
     {  5, DIFF_EASY,         FALSE },
     {  5, DIFF_EASY,         TRUE  },
@@ -1101,7 +1101,7 @@ done
 		    cluevals[j] *= grid[i];
 		    break;
 		  case C_SUB:
-		    cluevals[j] = abs(cluevals[j] - grid[i]);
+		    cluevals[j] = labs(cluevals[j] - grid[i]);
 		    break;
 		  case C_DIV:
 		    {
@@ -1249,6 +1249,27 @@ static const char *validate_desc(const game_params *params, const char *desc)
 	return "Too many clues for block structure";
 
     return NULL;
+}
+
+static key_label *game_request_keys(const game_params *params, int *nkeys)
+{
+    int i;
+    int w = params->w;
+
+    key_label *keys = snewn(w+1, key_label);
+    *nkeys = w + 1;
+
+    for (i = 0; i < w; i++) {
+        if (i<9) keys[i].button = '1' + i;
+        else keys[i].button = 'a' + i - 9;
+
+        keys[i].label = NULL;
+    }
+    keys[w].button = '\b';
+    keys[w].label = NULL;
+
+
+    return keys;
 }
 
 static game_state *new_game(midend *me, const game_params *params,
@@ -1513,7 +1534,7 @@ static int check_errors(const game_state *state, long *errors)
 		cluevals[j] *= state->grid[i];
 		break;
 	      case C_SUB:
-		cluevals[j] = abs(cluevals[j] - state->grid[i]);
+		cluevals[j] = labs(cluevals[j] - state->grid[i]);
 		break;
 	      case C_DIV:
 		{
@@ -2354,6 +2375,7 @@ const struct game thegame = {
     free_ui,
     encode_ui,
     decode_ui,
+    game_request_keys,
     game_changed_state,
     interpret_move,
     execute_move,

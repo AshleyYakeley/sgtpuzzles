@@ -1082,9 +1082,9 @@ static float *game_colours(frontend *fe, int *ncolours)
            0.0F);
 
     COLOUR(COL_LINE_NO,
-           ret[COL_BACKGROUND*3 + 0] * DARKER,
-           ret[COL_BACKGROUND*3 + 1] * DARKER,
-           ret[COL_BACKGROUND*3 + 2] * DARKER);
+           ret[COL_BACKGROUND*3 + 0],
+           ret[COL_BACKGROUND*3 + 1],
+           ret[COL_BACKGROUND*3 + 2]);
 
     *ncolours = NCOLOURS;
     return ret;
@@ -1099,6 +1099,7 @@ static float *game_colours(frontend *fe, int *ncolours)
 #define F_ERROR_CLUE BIT(12)
 #define F_FLASH BIT(13)
 #define F_CURSOR BIT(14)
+#define F_DONE_CLUE BIT(15)
 
 static game_drawstate *game_new_drawstate(drawing *dr, const game_state *state)
 {
@@ -1141,7 +1142,7 @@ static void draw_tile(drawing *dr, game_drawstate *ds, int r, int c,
         buf[1] = '\0';
         draw_text(dr, x + CENTER, y + CENTER, FONT_VARIABLE,
                   TILESIZE / 2, ALIGN_VCENTRE | ALIGN_HCENTRE,
-                  (flags & F_ERROR_CLUE ? COL_ERROR : COL_CLUE), buf);
+                  (flags & F_ERROR_CLUE ? COL_ERROR : flags & F_DONE_CLUE ? COL_BACKGROUND : COL_CLUE), buf);
     }
 
 
@@ -1207,6 +1208,9 @@ static void game_redraw(drawing *dr, game_drawstate *ds,
 
             if (clue != EMPTY && (on > clue || clue > 4 - off))
                 flags |= F_ERROR_CLUE;
+
+            if (clue != EMPTY && (on == clue && clue == 4 - off))
+                flags |= F_DONE_CLUE;
 
             if (ui->show && ui->x == c && ui->y == r)
                 flags |= F_CURSOR;

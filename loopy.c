@@ -103,6 +103,8 @@ enum {
     COL_HIGHLIGHT,
     COL_MISTAKE,
     COL_SATISFIED,
+    COL_ALMOST,
+    COL_ONEOFF,
     COL_FAINT,
     NCOLOURS
 };
@@ -926,6 +928,14 @@ static float *game_colours(frontend *fe, int *ncolours)
     ret[COL_SATISFIED * 3 + 0] = 0.0F;
     ret[COL_SATISFIED * 3 + 1] = 0.0F;
     ret[COL_SATISFIED * 3 + 2] = 0.0F;
+
+    ret[COL_ALMOST * 3 + 0] = 0.0F;
+    ret[COL_ALMOST * 3 + 1] = 0.9F;
+    ret[COL_ALMOST * 3 + 2] = 0.0F;
+
+    ret[COL_ONEOFF * 3 + 0] = 0.0F;
+    ret[COL_ONEOFF * 3 + 1] = 0.0F;
+    ret[COL_ONEOFF * 3 + 2] = 0.5F;
 
     /* We want the faint lines to be a bit darker than the background.
      * Except if the background is pretty dark already; then it ought to be a
@@ -3207,8 +3217,10 @@ static void game_redraw_clue(drawing *dr, game_drawstate *ds,
     char c[20];
     int needed_lines_yes = ds->needed_lines_yes[i];
     int needed_lines_no = ds->needed_lines_no[i];
-    int clue_mistake = needed_lines_yes < 0 || needed_lines_no < 0;
-    int clue_satisfied = needed_lines_yes == 0 && needed_lines_no == 0;
+    bool clue_mistake = needed_lines_yes < 0 || needed_lines_no < 0;
+    bool clue_satisfied = needed_lines_yes == 0 && needed_lines_no == 0;
+    bool clue_almost = needed_lines_yes == 0 || needed_lines_no == 0;
+    bool clue_oneoff = needed_lines_no == 1;
 
     sprintf(c, "%d", needed_lines_yes);
 
@@ -3217,7 +3229,9 @@ static void game_redraw_clue(drawing *dr, game_drawstate *ds,
 	      FONT_VARIABLE, ds->tilesize/2,
 	      ALIGN_VCENTRE | ALIGN_HCENTRE,
 	      clue_mistake ? COL_MISTAKE :
-	      clue_satisfied ? COL_SATISFIED : COL_FOREGROUND, c);
+	      clue_satisfied ? COL_SATISFIED :
+	      clue_almost ? COL_ALMOST :
+	      clue_oneoff ? COL_ONEOFF : COL_FOREGROUND, c);
 }
 
 static void edge_bbox(game_drawstate *ds, grid *g, grid_edge *e,

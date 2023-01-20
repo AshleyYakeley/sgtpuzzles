@@ -380,6 +380,7 @@ static bool is_markable(const game_params *params, pegrow pegs)
     for (i = 0; i < params->npegs; i++) {
         int c = pegs->pegs[i];
         if (c > 0) {
+            assert(c <= params->ncolours);
             colcount->pegs[c-1]++;
             nset++;
         }
@@ -462,6 +463,9 @@ static void decode_ui(game_ui *ui, const char *encoding)
     const char *p = encoding;
     for (i = 0; i < ui->curr_pegs->npegs; i++) {
         ui->curr_pegs->pegs[i] = atoi(p);
+        if (ui->curr_pegs->pegs[i] < 0 ||
+            ui->curr_pegs->pegs[i] > ui->params.ncolours)
+            ui->curr_pegs->pegs[i] = 0; /* Remove invalid pegs. */
         while (*p && isdigit((unsigned char)*p)) p++;
         if (*p == '_') {
             /* NB: old versions didn't store holds */
@@ -947,6 +951,8 @@ static game_state *execute_move(const game_state *from, const char *move)
 	ret->solved = -1;
 	return ret;
     } else if (move[0] == 'G') {
+        /* No guesses are allowed once the game is solved. */
+        if (from->solved) return NULL;
 	p = move+1;
 
 	ret = dup_game(from);

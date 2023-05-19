@@ -20,10 +20,6 @@
  *    requirements are adequately expressed by a single scalar tile
  *    size), and probably complicate the rest of the puzzles' API as a
  *    result. So I'm not sure I really want to do it.
- *
- *  - It would be nice if we could somehow auto-detect a real `long
- *    long' type on the host platform and use it in place of my
- *    hand-hacked int64s. It'd be faster and more reliable.
  */
 
 #include <stdio.h>
@@ -32,7 +28,14 @@
 #include <assert.h>
 #include <ctype.h>
 #include <limits.h>
-#include <math.h>
+#ifdef NO_TGMATH_H
+#  include <math.h>
+#else
+#  include <tgmath.h>
+#endif
+#if HAVE_STDINT_H
+#  include <stdint.h>
+#endif
 
 #include "puzzles.h"
 #include "tree234.h"
@@ -217,6 +220,9 @@ static const char *validate_params(const game_params *params, bool full)
  * integer overflow at the very core of cross().
  */
 
+#if !HAVE_STDINT_H
+/* For prehistoric C implementations, do this the hard way */
+
 typedef struct {
     long hi;
     unsigned long lo;
@@ -295,6 +301,21 @@ static int64 dotprod64(long a, long b, long p, long q)
 	ab.hi++;
     return ab;
 }
+
+#else /* HAVE_STDINT_H */
+
+typedef int64_t int64;
+#define greater64(i,j) ((i) > (j))
+#define sign64(i) ((i) < 0 ? -1 : (i)==0 ? 0 : +1)
+#define mulu32to64(x,y) ((int64_t)(unsigned long)(x) * (unsigned long)(y))
+#define mul32to64(x,y) ((int64_t)(long)(x) * (long)(y))
+
+static int64 dotprod64(long a, long b, long p, long q)
+{
+    return (int64)a * b + (int64)p * q;
+}
+
+#endif /* HAVE_STDINT_H */
 
 /*
  * Determine whether the line segments between a1 and a2, and
@@ -420,7 +441,9 @@ static void addedge(tree234 *edges, int a, int b)
     e->a = min(a, b);
     e->b = max(a, b);
 
-    add234(edges, e);
+    if (add234(edges, e) != e)
+        /* Duplicate edge. */
+        sfree(e);
 }
 
 static bool isedge(tree234 *edges, int a, int b)
@@ -442,8 +465,8 @@ typedef struct vertex {
 
 static int vertcmpC(const void *av, const void *bv)
 {
-    const vertex *a = (vertex *)av;
-    const vertex *b = (vertex *)bv;
+    const vertex *a = (const vertex *)av;
+    const vertex *b = (const vertex *)bv;
 
     if (a->param < b->param)
 	return -1;
@@ -1028,22 +1051,20 @@ static char *solve_game(const game_state *state, const game_state *currstate,
     return ret;
 }
 
-static bool game_can_format_as_text_now(const game_params *params)
-{
-    return true;
-}
-
-static char *game_text_format(const game_state *state)
-{
-    return NULL;
-}
-
 struct game_ui {
     int dragpoint;		       /* point being dragged; -1 if none */
     point newpoint;		       /* where it's been dragged to so far */
     bool just_dragged;                 /* reset in game_changed_state */
     bool just_moved;                   /* _set_ in game_changed_state */
     float anim_length;
+
+    /*
+     * User preference option to snap dragged points to a coarse-ish
+     * grid. Requested by a user who otherwise found themself spending
+     * too much time struggling to get lines nicely horizontal or
+     * vertical.
+     */
+    bool snap_to_grid;
 };
 
 static game_ui *new_ui(const game_state *state)
@@ -1051,21 +1072,35 @@ static game_ui *new_ui(const game_state *state)
     game_ui *ui = snew(game_ui);
     ui->dragpoint = -1;
     ui->just_moved = ui->just_dragged = false;
+    ui->snap_to_grid = false;
     return ui;
+}
+
+static config_item *get_prefs(game_ui *ui)
+{
+    config_item *cfg;
+
+    cfg = snewn(2, config_item);
+
+    cfg[0].name = "Snap points to a grid";
+    cfg[0].kw = "snap-to-grid";
+    cfg[0].type = C_BOOLEAN;
+    cfg[0].u.boolean.bval = ui->snap_to_grid;
+
+    cfg[1].name = NULL;
+    cfg[1].type = C_END;
+
+    return cfg;
+}
+
+static void set_prefs(game_ui *ui, const config_item *cfg)
+{
+    ui->snap_to_grid = cfg[0].u.boolean.bval;
 }
 
 static void free_ui(game_ui *ui)
 {
     sfree(ui);
-}
-
-static char *encode_ui(const game_ui *ui)
-{
-    return NULL;
-}
-
-static void decode_ui(game_ui *ui, const char *encoding)
-{
 }
 
 static void game_changed_state(game_ui *ui, const game_state *oldstate,
@@ -1081,6 +1116,62 @@ struct game_drawstate {
     int bg, dragpoint;
     long *x, *y;
 };
+
+static void place_dragged_point(const game_state *state, game_ui *ui,
+                                const game_drawstate *ds, int x, int y)
+{
+    if (ui->snap_to_grid) {
+        /*
+         * We snap points to a grid that has n-1 vertices on each
+         * side. This should be large enough to permit a straight-
+         * line drawing of any n-vertex planar graph, and moreover,
+         * any specific planar embedding of that graph.
+         *
+         * Source: David Eppstein's book 'Forbidden Configurations in
+         * Discrete Geometry' mentions (section 16.3, page 182) that
+         * the point configuration he describes as GRID(n-1,n-1) -
+         * that is, the vertices of a square grid with n-1 vertices on
+         * each side - is universal for n-vertex planar graphs. In
+         * other words (from definitions earlier in the chapter), if a
+         * graph G admits any drawing in the plane at all, then it can
+         * be drawn with straight lines, and with all vertices being
+         * vertices of that grid.
+         *
+         * That fact by itself only says that _some_ planar embedding
+         * of G can be drawn in this grid. We'd prefer that _all_
+         * embeddings of G can be so drawn, because 'snap to grid' is
+         * supposed to be a UI affordance, not an extra puzzle
+         * challenge, so we don't want to constrain the player's
+         * choice of planar embedding.
+         *
+         * But it doesn't make a difference. Proof: given a specific
+         * planar embedding of G, triangulate it, by adding extra
+         * edges to every face of degree > 3. When this process
+         * terminates with every face a triangle, we have a new graph
+         * G' such that no edge can be added without it ceasing to be
+         * planar. Standard theorems say that a maximal planar graph
+         * is 3-connected, and that a 3-connected planar graph has a
+         * _unique_ embedding. So any drawing of G' in the plane can
+         * be converted into a drawing of G in the desired embedding,
+         * by simply removing all the extra edges that we added to
+         * turn G into G'. And G' is still an n-vertex planar graph,
+         * hence it can be drawn in GRID(n-1,n-1). []
+         */
+        int d = state->params.n - 1;
+
+        x = d * x / (state->w * ds->tilesize);
+        x *= (state->w * ds->tilesize) / d;
+        x += (state->w * ds->tilesize) / (2*d);
+
+        y = d * y / (state->h * ds->tilesize);
+        y *= (state->h * ds->tilesize) / d;
+        y += (state->h * ds->tilesize) / (2*d);
+    }
+
+    ui->newpoint.x = x;
+    ui->newpoint.y = y;
+    ui->newpoint.d = ds->tilesize;
+}
 
 static char *interpret_move(const game_state *state, game_ui *ui,
                             const game_drawstate *ds,
@@ -1116,16 +1207,12 @@ static char *interpret_move(const game_state *state, game_ui *ui,
 
 	if (bestd <= DRAG_THRESHOLD * DRAG_THRESHOLD) {
 	    ui->dragpoint = best;
-	    ui->newpoint.x = x;
-	    ui->newpoint.y = y;
-	    ui->newpoint.d = ds->tilesize;
+            place_dragged_point(state, ui, ds, x, y);
 	    return UI_UPDATE;
 	}
 
     } else if (IS_MOUSE_DRAG(button) && ui->dragpoint >= 0) {
-	ui->newpoint.x = x;
-	ui->newpoint.y = y;
-	ui->newpoint.d = ds->tilesize;
+        place_dragged_point(state, ui, ds, x, y);
 	return UI_UPDATE;
     } else if (IS_MOUSE_RELEASE(button) && ui->dragpoint >= 0) {
 	int p = ui->dragpoint;
@@ -1196,7 +1283,7 @@ static game_state *execute_move(const game_state *state, const char *move)
  */
 
 static void game_compute_size(const game_params *params, int tilesize,
-                              int *x, int *y)
+                              const game_ui *ui, int *x, int *y)
 {
     *x = *y = COORDLIMIT(params->n) * tilesize;
 }
@@ -1354,7 +1441,7 @@ static void game_redraw(drawing *dr, game_drawstate *ds,
     ds->dragpoint = ui->dragpoint;
     ds->bg = bg;
 
-    game_compute_size(&state->params, ds->tilesize, &w, &h);
+    game_compute_size(&state->params, ds->tilesize, ui, &w, &h);
     draw_rect(dr, 0, 0, w, h, bg);
 
     /*
@@ -1446,19 +1533,6 @@ static int game_status(const game_state *state)
     return state->completed ? +1 : 0;
 }
 
-static bool game_timing_state(const game_state *state, game_ui *ui)
-{
-    return true;
-}
-
-static void game_print_size(const game_params *params, float *x, float *y)
-{
-}
-
-static void game_print(drawing *dr, const game_state *state, int tilesize)
-{
-}
-
 #ifdef COMBINED
 #define thegame untangle
 #endif
@@ -1479,11 +1553,12 @@ const struct game thegame = {
     dup_game,
     free_game,
     true, solve_game,
-    false, game_can_format_as_text_now, game_text_format,
+    false, NULL, NULL, /* can_format_as_text_now, text_format */
+    get_prefs, set_prefs,
     new_ui,
     free_ui,
-    encode_ui,
-    decode_ui,
+    NULL, /* encode_ui */
+    NULL, /* decode_ui */
     NULL, /* game_request_keys */
     game_changed_state,
     NULL, /* current_key_label */
@@ -1498,8 +1573,8 @@ const struct game thegame = {
     game_flash_length,
     game_get_cursor_location,
     game_status,
-    false, false, game_print_size, game_print,
+    false, false, NULL, NULL,          /* print_size, print */
     false,			       /* wants_statusbar */
-    false, game_timing_state,
+    false, NULL,                       /* timing_state */
     SOLVE_ANIMATES,		       /* flags */
 };

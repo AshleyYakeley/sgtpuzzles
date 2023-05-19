@@ -35,7 +35,11 @@
 #include <string.h>
 #include <assert.h>
 #include <ctype.h>
-#include <math.h>
+#ifdef NO_TGMATH_H
+#  include <math.h>
+#else
+#  include <tgmath.h>
+#endif
 
 #include "puzzles.h"
 
@@ -1031,7 +1035,7 @@ static char *new_game_desc(const game_params *params, random_state *rs,
         /* Monsters / Mirrors ratio should be balanced */
         ratio = (float)new->common->num_total /
             (float)(new->common->params.w * new->common->params.h);
-        if (ratio < 0.48 || ratio > 0.78) {
+        if (ratio < 0.48F || ratio > 0.78F) {
             free_game(new);
             continue;
         }        
@@ -1645,26 +1649,15 @@ struct game_ui {
 static game_ui *new_ui(const game_state *state)
 {
     game_ui *ui = snew(game_ui);
-    ui->hx = ui->hy = 0;
     ui->hpencil = false;
-    ui->hshow = false;
-    ui->hcursor = false;
+    ui->hx = ui->hy = ui->hshow = ui->hcursor =
+        getenv_bool("PUZZLES_SHOW_CURSOR", false);
     ui->ascii = false;
     return ui;
 }
 
 static void free_ui(game_ui *ui) {
     sfree(ui);
-    return;
-}
-
-static char *encode_ui(const game_ui *ui)
-{
-    return NULL;
-}
-
-static void decode_ui(game_ui *ui, const char *encoding)
-{
     return;
 }
 
@@ -2083,7 +2076,7 @@ static game_state *execute_move(const game_state *state, const char *move)
         } else if (c == 'G' || c == 'V' || c == 'Z' || c == 'E' ||
                    c == 'g' || c == 'v' || c == 'z') {
             move++;
-            sscanf(move, "%d%n", &x, &n);
+            if (sscanf(move, "%d%n", &x, &n) != 1) goto badmove;
             if (x < 0 || x >= ret->common->num_total) goto badmove;
             if (c == 'G') ret->guess[x] = 1;
             if (c == 'V') ret->guess[x] = 2;
@@ -2145,7 +2138,7 @@ static game_state *execute_move(const game_state *state, const char *move)
 #define PREFERRED_TILE_SIZE 64
 
 static void game_compute_size(const game_params *params, int tilesize,
-                              int *x, int *y)
+                              const game_ui *ui, int *x, int *y)
 {
     /* Ick: fake up `ds->tilesize' for macro expansion purposes */
     struct { int tilesize; } ads, *ds = &ads;
@@ -2429,7 +2422,7 @@ static void draw_monster(drawing *dr, game_drawstate *ds, int x, int y,
 static void draw_monster_count(drawing *dr, game_drawstate *ds,
                                const game_state *state, int c, bool hflash) {
     int dx,dy;
-    char buf[8];
+    char buf[MAX_DIGITS(int) + 1];
     char bufm[8];
     
     dy = TILESIZE/4;
@@ -2474,7 +2467,7 @@ static void draw_path_hint(drawing *dr, game_drawstate *ds,
                            const struct game_params *params,
                            int hint_index, bool hflash, int hint) {
     int x, y, color, dx, dy, text_dx, text_dy, text_size;
-    char buf[4];
+    char buf[MAX_DIGITS(int) + 1];
 
     if (ds->hint_errors[hint_index])
         color = COL_ERROR;
@@ -2770,19 +2763,6 @@ static int game_status(const game_state *state)
     return state->solved;
 }
 
-static bool game_timing_state(const game_state *state, game_ui *ui)
-{
-    return true;
-}
-
-static void game_print_size(const game_params *params, float *x, float *y)
-{
-}
-
-static void game_print(drawing *dr, const game_state *state, int tilesize)
-{
-}
-
 #ifdef COMBINED
 #define thegame undead
 #endif
@@ -2804,10 +2784,11 @@ const struct game thegame = {
     free_game,
     true, solve_game,
     true, game_can_format_as_text_now, game_text_format,
+    NULL, NULL, /* get_prefs, set_prefs */
     new_ui,
     free_ui,
-    encode_ui,
-    decode_ui,
+    NULL, /* encode_ui */
+    NULL, /* decode_ui */
     game_request_keys,
     game_changed_state,
     current_key_label,
@@ -2822,8 +2803,8 @@ const struct game thegame = {
     game_flash_length,
     game_get_cursor_location,
     game_status,
-    false, false, game_print_size, game_print,
+    false, false, NULL, NULL,          /* print_size, print */
     false,                 /* wants_statusbar */
-    false, game_timing_state,
+    false, NULL,                       /* timing_state */
     0,                     /* flags */
 };

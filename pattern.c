@@ -8,7 +8,11 @@
 #include <assert.h>
 #include <ctype.h>
 #include <limits.h>
-#include <math.h>
+#ifdef NO_TGMATH_H
+#  include <math.h>
+#else
+#  include <tgmath.h>
+#endif
 
 #include "puzzles.h"
 
@@ -363,7 +367,7 @@ static int compute_rowdata(int *ret, unsigned char *start, int len, int step)
 #define STILL_UNKNOWN 3
 
 #ifdef STANDALONE_SOLVER
-bool verbose = false;
+static bool verbose = false;
 #endif
 
 static bool do_recurse(unsigned char *known, unsigned char *deduced,
@@ -724,7 +728,7 @@ static unsigned char *generate_soluble(random_state *rs, int w, int h)
 #endif
 
 #ifdef STANDALONE_PICTURE_GENERATOR
-unsigned char *picture;
+static unsigned char *picture;
 #endif
 
 static char *new_game_desc(const game_params *params, random_state *rs,
@@ -913,8 +917,8 @@ static const char *validate_desc(const game_params *params, const char *desc)
                 p = desc;
                 while (*desc && isdigit((unsigned char)*desc)) desc++;
                 n = atoi(p);
-                if (n < 0)
-                    return "at least one clue is negative";
+                if (n <= 0)
+                    return "all clues must be positive";
                 if (n > INT_MAX - 1)
                     return "at least one clue is grossly excessive";
                 rowspace -= n+1;
@@ -1021,6 +1025,16 @@ static game_state *new_game(midend *me, const game_params *params,
         for (j = 0; j < state->common->rowlen[i]; j++)
             if (state->common->rowdata[state->common->rowsize * i + j] >= 10)
                 state->common->fontsize = FS_SMALL;
+    /*
+     * We might also need to use the small font if there are lots of
+     * row clues.  We assume that all clues are one digit and that a
+     * single-digit clue takes up 1.5 tiles, of which the clue is 0.5
+     * tiles and the space is 1.0 tiles.
+     */
+    for (i = params->w; i < params->w + params->h; i++)
+        if ((state->common->rowlen[i] * 3 - 2) >
+            TLBORDER(state->common->w) * 2)
+            state->common->fontsize = FS_SMALL;
 
     if (desc[-1] == ',') {
         /*
@@ -1236,7 +1250,7 @@ static game_ui *new_ui(const game_state *state)
     ret = snew(game_ui);
     ret->dragging = false;
     ret->cur_x = ret->cur_y = 0;
-    ret->cur_visible = false;
+    ret->cur_visible = getenv_bool("PUZZLES_SHOW_CURSOR", false);
 
     return ret;
 }
@@ -1244,15 +1258,6 @@ static game_ui *new_ui(const game_state *state)
 static void free_ui(game_ui *ui)
 {
     sfree(ui);
-}
-
-static char *encode_ui(const game_ui *ui)
-{
-    return NULL;
-}
-
-static void decode_ui(game_ui *ui, const char *encoding)
-{
 }
 
 static void game_changed_state(game_ui *ui, const game_state *oldstate,
@@ -1674,7 +1679,7 @@ static bool check_errors(const game_state *state, int i)
  */
 
 static void game_compute_size(const game_params *params, int tilesize,
-                              int *x, int *y)
+                              const game_ui *ui, int *x, int *y)
 {
     /* Ick: fake up `ds->tilesize' for macro expansion purposes */
     struct { int tilesize; } ads, *ds = &ads;
@@ -1738,6 +1743,7 @@ static game_drawstate *game_new_drawstate(drawing *dr, const game_state *state)
 static void game_free_drawstate(drawing *dr, game_drawstate *ds)
 {
     sfree(ds->visible);
+    sfree(ds->numcolours);
     sfree(ds->strbuf);
     sfree(ds);
 }
@@ -1812,10 +1818,10 @@ static void draw_numbers(
      * and FS_SMALL in all other cases.
      *
      * If we assume that a digit is about 0.6em wide, and we want
-     * about that space between clues, then FS_SMALL should be
+     * about that space between clues, then FS_LARGE should be
      * TILESIZE/1.2.  If we also assume that clues are at most two
      * digits long then the case where adjacent clues are two digits
-     * long requries FS_LARGE to be TILESIZE/1.8.
+     * long requries FS_SMALL to be TILESIZE/1.8.
      */
     fontsize = (TILE_SIZE + 0.5F) /
         (state->common->fontsize == FS_LARGE ? 1.2F : 1.8F);
@@ -1847,11 +1853,15 @@ static void draw_numbers(
     } else {
         int x, y;
         size_t off = 0;
+        const char *spaces = "  ";
 
         assert(rowlen <= state->common->rowsize);
         *ds->strbuf = '\0';
+        /* Squish up a bit if there are lots of clues. */
+        if (rowlen > TLBORDER(state->common->w)) spaces++;
         for (j = 0; j < rowlen; j++)
-            off += sprintf(ds->strbuf + off, "%s%d", j ? "  " : "", rowdata[j]);
+            off += sprintf(ds->strbuf + off, "%s%d",
+                           j ? spaces : "", rowdata[j]);
         y = ry;
         x = BORDER + TILE_SIZE * (TLBORDER(state->common->w)-1);
         draw_text(dr, x+TILE_SIZE, y+TILE_SIZE/2, FONT_VARIABLE,
@@ -1994,24 +2004,21 @@ static int game_status(const game_state *state)
     return state->completed ? +1 : 0;
 }
 
-static bool game_timing_state(const game_state *state, game_ui *ui)
-{
-    return true;
-}
-
-static void game_print_size(const game_params *params, float *x, float *y)
+static void game_print_size(const game_params *params, const game_ui *ui,
+                            float *x, float *y)
 {
     int pw, ph;
 
     /*
      * I'll use 5mm squares by default.
      */
-    game_compute_size(params, 500, &pw, &ph);
+    game_compute_size(params, 500, ui, &pw, &ph);
     *x = pw / 100.0F;
     *y = ph / 100.0F;
 }
 
-static void game_print(drawing *dr, const game_state *state, int tilesize)
+static void game_print(drawing *dr, const game_state *state, const game_ui *ui,
+                       int tilesize)
 {
     int w = state->common->w, h = state->common->h;
     int ink = print_mono_colour(dr, 0);
@@ -2085,10 +2092,11 @@ const struct game thegame = {
     free_game,
     true, solve_game,
     true, game_can_format_as_text_now, game_text_format,
+    NULL, NULL, /* get_prefs, set_prefs */
     new_ui,
     free_ui,
-    encode_ui,
-    decode_ui,
+    NULL, /* encode_ui */
+    NULL, /* decode_ui */
     NULL, /* game_request_keys */
     game_changed_state,
     current_key_label,
@@ -2105,7 +2113,7 @@ const struct game thegame = {
     game_status,
     true, false, game_print_size, game_print,
     false,			       /* wants_statusbar */
-    false, game_timing_state,
+    false, NULL,                       /* timing_state */
     REQUIRE_RBUTTON,		       /* flags */
 };
 

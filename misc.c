@@ -3,7 +3,12 @@
  */
 
 #include <assert.h>
-#include <math.h>
+#include <ctype.h>
+#ifdef NO_TGMATH_H
+#  include <math.h>
+#else
+#  include <tgmath.h>
+#endif
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -196,6 +201,14 @@ char *fgetline(FILE *fp)
     }
     ret[len] = '\0';
     return ret;
+}
+
+int getenv_bool(const char *name, int dflt)
+{
+    char *env = getenv(name);
+    if (env == NULL) return dflt;
+    if (strchr("yYtT", env[0])) return true;
+    return false;
 }
 
 /* Utility functions for colour manipulation. */
@@ -486,6 +499,39 @@ char *button2label(int button)
 
     /* should never get here */
     return NULL;
+}
+
+char *make_prefs_path(const char *dir, const char *sep,
+                      const game *game, const char *suffix)
+{
+    size_t dirlen = strlen(dir);
+    size_t seplen = strlen(sep);
+    size_t gamelen = strlen(game->name);
+    size_t suffixlen = strlen(suffix);
+    char *path, *p;
+    const char *q;
+
+    if (!dir || !sep || !game || !suffix)
+        return NULL;
+
+    path = snewn(dirlen + seplen + gamelen + suffixlen + 1, char);
+    p = path;
+
+    memcpy(p, dir, dirlen);
+    p += dirlen;
+
+    memcpy(p, sep, seplen);
+    p += seplen;
+
+    for (q = game->name; *q; q++)
+        if (*q != ' ')
+            *p++ = tolower((unsigned char)*q);
+
+    memcpy(p, suffix, suffixlen);
+    p += suffixlen;
+
+    *p = '\0';
+    return path;
 }
 
 /* vim: set shiftwidth=4 tabstop=8: */

@@ -28,7 +28,11 @@
 #include <string.h>
 #include <assert.h>
 #include <ctype.h>
-#include <math.h>
+#ifdef NO_TGMATH_H
+#  include <math.h>
+#else
+#  include <tgmath.h>
+#endif
 
 #include "puzzles.h"
 
@@ -51,7 +55,7 @@ enum {
  */
 #if defined STANDALONE_SOLVER
 #define SOLVER_DIAGNOSTICS
-bool verbose = false;
+static bool verbose = false;
 #elif defined SOLVER_DIAGNOSTICS
 #define verbose true
 #endif
@@ -226,6 +230,8 @@ static const char *validate_params(const game_params *params, bool full)
 
     if (params->w < 2 || params->h < 2)
 	return "Width and height must both be at least two";
+    if (params->w > INT_MAX / params->h)
+        return "Width times height must not be unreasonably large";
 
     return NULL;
 }
@@ -238,7 +244,7 @@ struct solver_scratch {
      * Disjoint set forest which tracks the connected sets of
      * points.
      */
-    int *connected;
+    DSF *connected;
 
     /*
      * Counts the number of possible exits from each connected set
@@ -259,7 +265,7 @@ struct solver_scratch {
      * Another disjoint set forest. This one tracks _squares_ which
      * are known to slant in the same direction.
      */
-    int *equiv;
+    DSF *equiv;
 
     /*
      * Stores slash values which we know for an equivalence class.
@@ -306,10 +312,10 @@ static struct solver_scratch *new_scratch(int w, int h)
 {
     int W = w+1, H = h+1;
     struct solver_scratch *ret = snew(struct solver_scratch);
-    ret->connected = snewn(W*H, int);
+    ret->connected = dsf_new(W*H);
     ret->exits = snewn(W*H, int);
     ret->border = snewn(W*H, bool);
-    ret->equiv = snewn(w*h, int);
+    ret->equiv = dsf_new(w*h);
     ret->slashval = snewn(w*h, signed char);
     ret->vbitmap = snewn(w*h, unsigned char);
     return ret;
@@ -319,10 +325,10 @@ static void free_scratch(struct solver_scratch *sc)
 {
     sfree(sc->vbitmap);
     sfree(sc->slashval);
-    sfree(sc->equiv);
+    dsf_free(sc->equiv);
     sfree(sc->border);
     sfree(sc->exits);
-    sfree(sc->connected);
+    dsf_free(sc->connected);
     sfree(sc);
 }
 
@@ -330,7 +336,7 @@ static void free_scratch(struct solver_scratch *sc)
  * Wrapper on dsf_merge() which updates the `exits' and `border'
  * arrays.
  */
-static void merge_vertices(int *connected,
+static void merge_vertices(DSF *connected,
 			   struct solver_scratch *sc, int i, int j)
 {
     int exits = -1;
@@ -376,7 +382,7 @@ static void decr_exits(struct solver_scratch *sc, int i)
 
 static void fill_square(int w, int h, int x, int y, int v,
 			signed char *soln,
-			int *connected, struct solver_scratch *sc)
+			DSF *connected, struct solver_scratch *sc)
 {
     int W = w+1 /*, H = h+1 */;
 
@@ -466,13 +472,13 @@ static int slant_solve(int w, int h, const signed char *clues,
      * Establish a disjoint set forest for tracking connectedness
      * between grid points.
      */
-    dsf_init(sc->connected, W*H);
+    dsf_reinit(sc->connected);
 
     /*
      * Establish a disjoint set forest for tracking which squares
      * are known to slant in the same direction.
      */
-    dsf_init(sc->equiv, w*h);
+    dsf_reinit(sc->equiv);
 
     /*
      * Clear the slashval array.
@@ -991,7 +997,8 @@ static void slant_generate(int w, int h, signed char *soln, random_state *rs)
 {
     int W = w+1, H = h+1;
     int x, y, i;
-    int *connected, *indices;
+    DSF *connected;
+    int *indices;
 
     /*
      * Clear the output.
@@ -1002,7 +1009,7 @@ static void slant_generate(int w, int h, signed char *soln, random_state *rs)
      * Establish a disjoint set forest for tracking connectedness
      * between grid points.
      */
-    connected = snew_dsf(W*H);
+    connected = dsf_new(W*H);
 
     /*
      * Prepare a list of the squares in the grid, and fill them in
@@ -1058,7 +1065,7 @@ static void slant_generate(int w, int h, signed char *soln, random_state *rs)
     }
 
     sfree(indices);
-    sfree(connected);
+    dsf_free(connected);
 }
 
 static char *new_game_desc(const game_params *params, random_state *rs,
@@ -1574,28 +1581,69 @@ static char *game_text_format(const game_state *state)
 struct game_ui {
     int cur_x, cur_y;
     bool cur_visible;
+
+    /*
+     * User preference option to swap the left and right mouse
+     * buttons. There isn't a completely obvious mapping of left and
+     * right buttons to the two directions of slash, and at least one
+     * player turned out not to have the same intuition as me.
+     */
+    bool swap_buttons;
 };
+
+static void legacy_prefs_override(struct game_ui *ui_out)
+{
+    static bool initialised = false;
+    static int swap_buttons = -1;
+
+    if (!initialised) {
+        initialised = true;
+        swap_buttons = getenv_bool("SLANT_SWAP_BUTTONS", -1);
+    }
+
+    if (swap_buttons != -1)
+        ui_out->swap_buttons = swap_buttons;
+}
 
 static game_ui *new_ui(const game_state *state)
 {
     game_ui *ui = snew(game_ui);
     ui->cur_x = ui->cur_y = 0;
-    ui->cur_visible = false;
+    ui->cur_visible = getenv_bool("PUZZLES_SHOW_CURSOR", false);
+
+    ui->swap_buttons = false;
+    legacy_prefs_override(ui);
+
     return ui;
+}
+
+static config_item *get_prefs(game_ui *ui)
+{
+    config_item *ret;
+
+    ret = snewn(2, config_item);
+
+    ret[0].name = "Mouse button order";
+    ret[0].kw = "left-button";
+    ret[0].type = C_CHOICES;
+    ret[0].u.choices.choicenames = ":Left \\, right /:Left /, right \\";
+    ret[0].u.choices.choicekws = ":\\:/";
+    ret[0].u.choices.selected = ui->swap_buttons;
+
+    ret[1].name = NULL;
+    ret[1].type = C_END;
+
+    return ret;
+}
+
+static void set_prefs(game_ui *ui, const config_item *cfg)
+{
+    ui->swap_buttons = cfg[0].u.choices.selected;
 }
 
 static void free_ui(game_ui *ui)
 {
     sfree(ui);
-}
-
-static char *encode_ui(const game_ui *ui)
-{
-    return NULL;
-}
-
-static void decode_ui(game_ui *ui, const char *encoding)
-{
 }
 
 static void game_changed_state(game_ui *ui, const game_state *oldstate,
@@ -1668,28 +1716,12 @@ static char *interpret_move(const game_state *state, game_ui *ui,
     enum { CLOCKWISE, ANTICLOCKWISE, NONE } action = NONE;
 
     if (button == LEFT_BUTTON || button == RIGHT_BUTTON) {
-	/*
-	 * This is an utterly awful hack which I should really sort out
-	 * by means of a proper configuration mechanism. One Slant
-	 * player has observed that they prefer the mouse buttons to
-	 * function exactly the opposite way round, so here's a
-	 * mechanism for environment-based configuration. I cache the
-	 * result in a global variable - yuck! - to avoid repeated
-	 * lookups.
-	 */
-	{
-	    static int swap_buttons = -1;
-	    if (swap_buttons < 0) {
-		char *env = getenv("SLANT_SWAP_BUTTONS");
-		swap_buttons = (env && (env[0] == 'y' || env[0] == 'Y'));
-	    }
-	    if (swap_buttons) {
-		if (button == LEFT_BUTTON)
-		    button = RIGHT_BUTTON;
-		else
-		    button = LEFT_BUTTON;
-	    }
-	}
+        if (ui->swap_buttons) {
+            if (button == LEFT_BUTTON)
+                button = RIGHT_BUTTON;
+            else
+                button = LEFT_BUTTON;
+        }
         action = (button == LEFT_BUTTON) ? CLOCKWISE : ANTICLOCKWISE;
 
         x = FROMCOORD(x);
@@ -1789,7 +1821,7 @@ static game_state *execute_move(const game_state *state, const char *move)
  */
 
 static void game_compute_size(const game_params *params, int tilesize,
-                              int *x, int *y)
+                              const game_ui *ui, int *x, int *y)
 {
     /* fool the macros */
     struct dummy { int tilesize; } dummy, *ds = &dummy;
@@ -2088,24 +2120,21 @@ static int game_status(const game_state *state)
     return state->completed ? +1 : 0;
 }
 
-static bool game_timing_state(const game_state *state, game_ui *ui)
-{
-    return true;
-}
-
-static void game_print_size(const game_params *params, float *x, float *y)
+static void game_print_size(const game_params *params, const game_ui *ui,
+                            float *x, float *y)
 {
     int pw, ph;
 
     /*
      * I'll use 6mm squares by default.
      */
-    game_compute_size(params, 600, &pw, &ph);
+    game_compute_size(params, 600, ui, &pw, &ph);
     *x = pw / 100.0F;
     *y = ph / 100.0F;
 }
 
-static void game_print(drawing *dr, const game_state *state, int tilesize)
+static void game_print(drawing *dr, const game_state *state, const game_ui *ui,
+                       int tilesize)
 {
     int w = state->p.w, h = state->p.h, W = w+1;
     int ink = print_mono_colour(dr, 0);
@@ -2185,10 +2214,11 @@ const struct game thegame = {
     free_game,
     true, solve_game,
     true, game_can_format_as_text_now, game_text_format,
+    get_prefs, set_prefs,
     new_ui,
     free_ui,
-    encode_ui,
-    decode_ui,
+    NULL, /* encode_ui */
+    NULL, /* decode_ui */
     NULL, /* game_request_keys */
     game_changed_state,
     current_key_label,
@@ -2205,7 +2235,7 @@ const struct game thegame = {
     game_status,
     true, false, game_print_size, game_print,
     false,			       /* wants_statusbar */
-    false, game_timing_state,
+    false, NULL,                       /* timing_state */
     0,				       /* flags */
 };
 

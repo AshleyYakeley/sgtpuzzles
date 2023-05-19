@@ -12,7 +12,11 @@
 #include <assert.h>
 #include <ctype.h>
 #include <limits.h>
-#include <math.h>
+#ifdef NO_TGMATH_H
+#  include <math.h>
+#else
+#  include <tgmath.h>
+#endif
 
 #include "puzzles.h"
 
@@ -1523,7 +1527,8 @@ static char *encode_ui(const game_ui *ui)
     return dupstr(buf);
 }
 
-static void decode_ui(game_ui *ui, const char *encoding)
+static void decode_ui(game_ui *ui, const char *encoding,
+                      const game_state *state)
 {
     int p = 0;
     sscanf(encoding, "D%d%n", &ui->deaths, &p);
@@ -1605,7 +1610,7 @@ static char *interpret_move(const game_state *state, game_ui *ui,
 	     * end up the right way round. */
 	    angle = atan2(dx, -dy);
 
-	    angle = (angle + (PI/8)) / (PI/4);
+	    angle = (angle + (float)(PI/8)) / (float)(PI/4);
 	    assert(angle > -16.0F);
 	    dir = (int)(angle + 16.0F) & 7;
 	}
@@ -1697,6 +1702,7 @@ static game_state *execute_move(const game_state *state, const char *move)
 	 * This is a solve move, so we don't actually _change_ the
 	 * grid but merely set up a stored solution path.
 	 */
+        if (move[1] == '\0') return NULL; /* Solution must be non-empty. */
 	ret = dup_game(state);
 	install_new_solution(ret, move);
 	return ret;
@@ -1741,11 +1747,10 @@ static game_state *execute_move(const game_state *state, const char *move)
     if (ret->soln) {
 	if (ret->dead || ret->gems == 0)
 	    discard_solution(ret);
-	else if (ret->soln->list[ret->solnpos] == dir) {
+	else if (ret->soln->list[ret->solnpos] == dir &&
+            ret->solnpos+1 < ret->soln->len)
 	    ++ret->solnpos;
-	    assert(ret->solnpos < ret->soln->len); /* or gems == 0 */
-	    assert(!ret->dead); /* or not a solution */
-	} else {
+	else {
 	    const char *error = NULL;
             char *soln = solve_game(NULL, ret, NULL, &error);
 	    if (!error) {
@@ -1763,7 +1768,7 @@ static game_state *execute_move(const game_state *state, const char *move)
  */
 
 static void game_compute_size(const game_params *params, int tilesize,
-                              int *x, int *y)
+                              const game_ui *ui, int *x, int *y)
 {
     /* Ick: fake up `ds->tilesize' for macro expansion purposes */
     struct { int tilesize; } ads, *ds = &ads;
@@ -2205,19 +2210,6 @@ static int game_status(const game_state *state)
     return state->gems == 0 ? +1 : 0;
 }
 
-static bool game_timing_state(const game_state *state, game_ui *ui)
-{
-    return true;
-}
-
-static void game_print_size(const game_params *params, float *x, float *y)
-{
-}
-
-static void game_print(drawing *dr, const game_state *state, int tilesize)
-{
-}
-
 #ifdef COMBINED
 #define thegame inertia
 #endif
@@ -2239,6 +2231,7 @@ const struct game thegame = {
     free_game,
     true, solve_game,
     true, game_can_format_as_text_now, game_text_format,
+    NULL, NULL, /* get_prefs, set_prefs */
     new_ui,
     free_ui,
     encode_ui,
@@ -2257,8 +2250,8 @@ const struct game thegame = {
     game_flash_length,
     game_get_cursor_location,
     game_status,
-    false, false, game_print_size, game_print,
+    false, false, NULL, NULL,          /* print_size, print */
     true,			       /* wants_statusbar */
-    false, game_timing_state,
+    false, NULL,                       /* timing_state */
     0,				       /* flags */
 };

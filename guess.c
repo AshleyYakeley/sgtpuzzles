@@ -7,7 +7,11 @@
 #include <string.h>
 #include <assert.h>
 #include <ctype.h>
-#include <math.h>
+#ifdef NO_TGMATH_H
+#  include <math.h>
+#else
+#  include <tgmath.h>
+#endif
 
 #include "puzzles.h"
 
@@ -359,16 +363,6 @@ static char *solve_game(const game_state *state, const game_state *currstate,
     return dupstr("S");
 }
 
-static bool game_can_format_as_text_now(const game_params *params)
-{
-    return true;
-}
-
-static char *game_text_format(const game_state *state)
-{
-    return NULL;
-}
-
 static bool is_markable(const game_params *params, pegrow pegs)
 {
     int i, nset = 0, nrequired;
@@ -420,6 +414,7 @@ static game_ui *new_ui(const game_state *state)
     ui->params = state->params;        /* structure copy */
     ui->curr_pegs = new_pegrow(state->params.npegs);
     ui->holds = snewn(state->params.npegs, bool);
+    ui->display_cur = getenv_bool("PUZZLES_SHOW_CURSOR", false);
     memset(ui->holds, 0, sizeof(bool)*state->params.npegs);
     ui->drag_opeg = -1;
     return ui;
@@ -457,7 +452,8 @@ static char *encode_ui(const game_ui *ui)
     return sresize(ret, p - ret, char);
 }
 
-static void decode_ui(game_ui *ui, const char *encoding)
+static void decode_ui(game_ui *ui, const char *encoding,
+                      const game_state *state)
 {
     int i;
     const char *p = encoding;
@@ -1003,7 +999,7 @@ static game_state *execute_move(const game_state *from, const char *move)
 #define BORDER    0.5
 
 static void game_compute_size(const game_params *params, int tilesize,
-                              int *x, int *y)
+                              const game_ui *ui, int *x, int *y)
 {
     double hmul, vmul_c, vmul_g, vmul;
     int hintw = (params->npegs+1)/2;
@@ -1047,7 +1043,8 @@ static void game_set_size(drawing *dr, game_drawstate *ds,
     guessh = ((ds->pegsz + ds->gapsz) * params->nguesses);      /* guesses */
     guessh += ds->gapsz + ds->pegsz;                            /* solution */
 
-    game_compute_size(params, tilesize, &ds->w, &ds->h);
+    /* We know we don't need anything from the game_ui we haven't got */
+    game_compute_size(params, tilesize, NULL, &ds->w, &ds->h);
     ds->colx = ds->border;
     ds->coly = (ds->h - colh) / 2;
 
@@ -1500,19 +1497,6 @@ static int game_status(const game_state *state)
     return state->solved;
 }
 
-static bool game_timing_state(const game_state *state, game_ui *ui)
-{
-    return true;
-}
-
-static void game_print_size(const game_params *params, float *x, float *y)
-{
-}
-
-static void game_print(drawing *dr, const game_state *state, int tilesize)
-{
-}
-
 #ifdef COMBINED
 #define thegame guess
 #endif
@@ -1533,7 +1517,8 @@ const struct game thegame = {
     dup_game,
     free_game,
     true, solve_game,
-    false, game_can_format_as_text_now, game_text_format,
+    false, NULL, NULL, /* can_format_as_text_now, text_format */
+    NULL, NULL, /* get_prefs, set_prefs */
     new_ui,
     free_ui,
     encode_ui,
@@ -1552,9 +1537,9 @@ const struct game thegame = {
     game_flash_length,
     game_get_cursor_location,
     game_status,
-    false, false, game_print_size, game_print,
+    false, false, NULL, NULL,          /* print_size, print */
     false,			       /* wants_statusbar */
-    false, game_timing_state,
+    false, NULL,                       /* timing_state */
     0,				       /* flags */
 };
 

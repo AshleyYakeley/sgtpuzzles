@@ -8,7 +8,11 @@
 #include <assert.h>
 #include <ctype.h>
 #include <limits.h>
-#include <math.h>
+#ifdef NO_TGMATH_H
+#  include <math.h>
+#else
+#  include <tgmath.h>
+#endif
 
 #include "puzzles.h"
 
@@ -445,22 +449,68 @@ static char *game_text_format(const game_state *state)
     return ret;
 }
 
+struct game_ui {
+    /*
+     * User-preference option: invert the direction of arrow-key
+     * control, so that the arrow on the key you press indicates in
+     * which direction you want the _space_ to move, rather than in
+     * which direction you want a tile to move to fill the space.
+     */
+    bool invert_cursor;
+};
+
+static void legacy_prefs_override(struct game_ui *ui_out)
+{
+    static bool initialised = false;
+    static int invert_cursor = -1;
+
+    if (!initialised) {
+        initialised = true;
+        invert_cursor = getenv_bool("FIFTEEN_INVERT_CURSOR", -1);
+    }
+
+    if (invert_cursor != -1)
+        ui_out->invert_cursor = invert_cursor;
+}
+
 static game_ui *new_ui(const game_state *state)
 {
-    return NULL;
+    struct game_ui *ui = snew(struct game_ui);
+
+    ui->invert_cursor = false;
+
+    legacy_prefs_override(ui);
+
+    return ui;
+}
+
+static config_item *get_prefs(game_ui *ui)
+{
+    config_item *ret;
+
+    ret = snewn(2, config_item);
+
+    ret[0].name = "Sense of arrow keys";
+    ret[0].kw = "arrow-semantics";
+    ret[0].type = C_CHOICES;
+    ret[0].u.choices.choicenames = ":Move the tile:Move the gap";
+    ret[0].u.choices.choicekws = ":tile:gap";
+    ret[0].u.choices.selected = ui->invert_cursor;
+
+    ret[1].name = NULL;
+    ret[1].type = C_END;
+
+    return ret;
+}
+
+static void set_prefs(game_ui *ui, const config_item *cfg)
+{
+    ui->invert_cursor = cfg[0].u.choices.selected;
 }
 
 static void free_ui(game_ui *ui)
 {
-}
-
-static char *encode_ui(const game_ui *ui)
-{
-    return NULL;
-}
-
-static void decode_ui(game_ui *ui, const char *encoding)
-{
+    sfree(ui);
 }
 
 static void game_changed_state(game_ui *ui, const game_state *oldstate,
@@ -713,13 +763,8 @@ static char *interpret_move(const game_state *state, game_ui *ui,
         if (nx < 0 || nx >= state->w || ny < 0 || ny >= state->h)
             return NULL;               /* out of bounds */
     } else if (IS_CURSOR_MOVE(button)) {
-        static int invert_cursor = -1;
-        if (invert_cursor == -1) {
-            char *env = getenv("FIFTEEN_INVERT_CURSOR");
-            invert_cursor = (env && (env[0] == 'y' || env[0] == 'Y'));
-        }
         button = flip_cursor(button); /* the default */
-        if (invert_cursor)
+        if (ui->invert_cursor)
             button = flip_cursor(button); /* undoes the first flip */
 	move_cursor(button, &nx, &ny, state->w, state->h, false);
     } else if ((button == 'h' || button == 'H') && !state->completed) {
@@ -811,7 +856,7 @@ static game_state *execute_move(const game_state *from, const char *move)
  */
 
 static void game_compute_size(const game_params *params, int tilesize,
-                              int *x, int *y)
+                              const game_ui *ui, int *x, int *y)
 {
     /* Ick: fake up `ds->tilesize' for macro expansion purposes */
     struct { int tilesize; } ads, *ds = &ads;
@@ -1080,19 +1125,6 @@ static int game_status(const game_state *state)
     return state->completed ? +1 : 0;
 }
 
-static bool game_timing_state(const game_state *state, game_ui *ui)
-{
-    return true;
-}
-
-static void game_print_size(const game_params *params, float *x, float *y)
-{
-}
-
-static void game_print(drawing *dr, const game_state *state, int tilesize)
-{
-}
-
 #ifdef COMBINED
 #define thegame fifteen
 #endif
@@ -1114,10 +1146,11 @@ const struct game thegame = {
     free_game,
     true, solve_game,
     true, game_can_format_as_text_now, game_text_format,
+    get_prefs, set_prefs,
     new_ui,
     free_ui,
-    encode_ui,
-    decode_ui,
+    NULL, /* encode_ui */
+    NULL, /* decode_ui */
     NULL, /* game_request_keys */
     game_changed_state,
     NULL, /* current_key_label */
@@ -1132,9 +1165,9 @@ const struct game thegame = {
     game_flash_length,
     game_get_cursor_location,
     game_status,
-    false, false, game_print_size, game_print,
+    false, false, NULL, NULL,          /* print_size, print */
     true,			       /* wants_statusbar */
-    false, game_timing_state,
+    false, NULL,                       /* timing_state */
     0,				       /* flags */
 };
 

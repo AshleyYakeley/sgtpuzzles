@@ -11,7 +11,11 @@
 #include <assert.h>
 #include <ctype.h>
 #include <limits.h>
-#include <math.h>
+#ifdef NO_TGMATH_H
+#  include <math.h>
+#else
+#  include <tgmath.h>
+#endif
 
 #include "puzzles.h"
 
@@ -124,14 +128,16 @@ static void decode_params(game_params *ret, char const *string)
     while (*string) {
 	if (*string == 'r') {
 	    ret->rowsonly = true;
+            string++;
 	} else if (*string == 'o') {
 	    ret->orientable = true;
+            string++;
 	} else if (*string == 'm') {
             string++;
 	    ret->movetarget = atoi(string);
-            while (string[1] && isdigit((unsigned char)string[1])) string++;
-	}
-	string++;
+            while (*string && isdigit((unsigned char)*string)) string++;
+	} else
+            string++;
     }
 }
 
@@ -616,7 +622,7 @@ static game_ui *new_ui(const game_state *state)
 
     ui->cur_x = 0;
     ui->cur_y = 0;
-    ui->cur_visible = false;
+    ui->cur_visible = getenv_bool("PUZZLES_SHOW_CURSOR", false);
 
     return ui;
 }
@@ -624,15 +630,6 @@ static game_ui *new_ui(const game_state *state)
 static void free_ui(game_ui *ui)
 {
     sfree(ui);
-}
-
-static char *encode_ui(const game_ui *ui)
-{
-    return NULL;
-}
-
-static void decode_ui(game_ui *ui, const char *encoding)
-{
 }
 
 static void game_changed_state(game_ui *ui, const game_state *oldstate,
@@ -803,7 +800,7 @@ static game_state *execute_move(const game_state *from, const char *move)
  */
 
 static void game_compute_size(const game_params *params, int tilesize,
-                              int *x, int *y)
+                              const game_ui *ui, int *x, int *y)
 {
     /* Ick: fake up `ds->tilesize' for macro expansion purposes */
     struct { int tilesize; } ads, *ds = &ads;
@@ -882,8 +879,8 @@ static void rotate(int *xy, struct rotation *rot)
 	xf2 = rot->c * xf + rot->s * yf;
 	yf2 = - rot->s * xf + rot->c * yf;
 
-	xy[0] = (int)(xf2 + rot->ox + 0.5);   /* round to nearest */
-	xy[1] = (int)(yf2 + rot->oy + 0.5);   /* round to nearest */
+	xy[0] = (int)(xf2 + rot->ox + 0.5F);   /* round to nearest */
+	xy[1] = (int)(yf2 + rot->oy + 0.5F);   /* round to nearest */
     }
 }
 
@@ -1070,7 +1067,7 @@ static int highlight_colour(float angle)
 	COL_LOWLIGHT,
     };
 
-    return colours[(int)((angle + 2*PI) / (PI/16)) & 31];
+    return colours[(int)((angle + 2*(float)PI) / ((float)PI/16)) & 31];
 }
 
 static float game_anim_length_real(const game_state *oldstate,
@@ -1194,7 +1191,7 @@ static void game_redraw(drawing *dr, game_drawstate *ds,
 	rot->cw = rot->ch = TILE_SIZE * state->n;
 	rot->ox = rot->cx + rot->cw/2;
 	rot->oy = rot->cy + rot->ch/2;
-	angle = (float)((-PI/2 * lastr) * (1.0 - animtime / anim_max));
+	angle = ((-(float)PI/2 * lastr) * (1.0F - animtime / anim_max));
 	rot->c = (float)cos(angle);
 	rot->s = (float)sin(angle);
 
@@ -1287,19 +1284,6 @@ static void game_redraw(drawing *dr, game_drawstate *ds,
     }
 }
 
-static bool game_timing_state(const game_state *state, game_ui *ui)
-{
-    return true;
-}
-
-static void game_print_size(const game_params *params, float *x, float *y)
-{
-}
-
-static void game_print(drawing *dr, const game_state *state, int tilesize)
-{
-}
-
 #ifdef COMBINED
 #define thegame twiddle
 #endif
@@ -1321,10 +1305,11 @@ const struct game thegame = {
     free_game,
     true, solve_game,
     true, game_can_format_as_text_now, game_text_format,
+    NULL, NULL, /* get_prefs, set_prefs */
     new_ui,
     free_ui,
-    encode_ui,
-    decode_ui,
+    NULL, /* encode_ui */
+    NULL, /* decode_ui */
     NULL, /* game_request_keys */
     game_changed_state,
     current_key_label,
@@ -1339,9 +1324,9 @@ const struct game thegame = {
     game_flash_length,
     game_get_cursor_location,
     game_status,
-    false, false, game_print_size, game_print,
+    false, false, NULL, NULL,          /* print_size, print */
     true,			       /* wants_statusbar */
-    false, game_timing_state,
+    false, NULL,                       /* timing_state */
     0,				       /* flags */
 };
 

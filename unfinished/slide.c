@@ -32,7 +32,11 @@
 #include <string.h>
 #include <assert.h>
 #include <ctype.h>
-#include <math.h>
+#ifdef NO_TGMATH_H
+#  include <math.h>
+#else
+#  include <tgmath.h>
+#endif
 
 #include "puzzles.h"
 #include "tree234.h"
@@ -290,7 +294,7 @@ static char *board_text_format(int w, int h, unsigned char *data,
 			       bool *forcefield)
 {
     int wh = w*h;
-    int *dsf = snew_dsf(wh);
+    DSF *dsf = dsf_new(wh);
     int i, x, y;
     int retpos, retlen = (w*2+2)*(h*2+1)+1;
     char *ret = snewn(retlen, char);
@@ -644,7 +648,7 @@ static void generate_board(int w, int h, int *rtx, int *rty, int *minmoves,
     unsigned char *board, *board2;
     bool *forcefield;
     bool *tried_merge;
-    int *dsf;
+    DSF *dsf;
     int *list, nlist, pos;
     int tx, ty;
     int i, j;
@@ -666,7 +670,7 @@ static void generate_board(int w, int h, int *rtx, int *rty, int *minmoves,
 
     tried_merge = snewn(wh * wh, bool);
     memset(tried_merge, 0, wh*wh * sizeof(bool));
-    dsf = snew_dsf(wh);
+    dsf = dsf_new(wh);
 
     /*
      * Invent a main piece at one extreme. (FIXME: vary the
@@ -820,7 +824,7 @@ static void generate_board(int w, int h, int *rtx, int *rty, int *minmoves,
 	}
     }
 
-    sfree(dsf);
+    dsf_free(dsf);
     sfree(list);
     sfree(tried_merge);
     sfree(board2);
@@ -1213,15 +1217,6 @@ static void free_ui(game_ui *ui)
     sfree(ui);
 }
 
-static char *encode_ui(const game_ui *ui)
-{
-    return NULL;
-}
-
-static void decode_ui(game_ui *ui, const char *encoding)
-{
-}
-
 static void game_changed_state(game_ui *ui, const game_state *oldstate,
                                const game_state *newstate)
 {
@@ -1599,7 +1594,7 @@ static game_state *execute_move(const game_state *state, const char *move)
  */
 
 static void game_compute_size(const game_params *params, int tilesize,
-                              int *x, int *y)
+                              const game_ui *ui, int *x, int *y)
 {
     /* fool the macros */
     struct dummy { int tilesize; } dummy, *ds = &dummy;
@@ -2088,7 +2083,7 @@ static void draw_tile(drawing *dr, game_drawstate *ds,
     draw_update(dr, tx, ty, TILESIZE, TILESIZE);
 }
 
-static unsigned long find_piecepart(int w, int h, int *dsf, int x, int y)
+static unsigned long find_piecepart(int w, int h, DSF *dsf, int x, int y)
 {
     int i = y*w+x;
     int canon = dsf_canonify(dsf, i);
@@ -2124,7 +2119,7 @@ static void game_redraw(drawing *dr, game_drawstate *ds,
 {
     int w = state->w, h = state->h, wh = w*h;
     unsigned char *board;
-    int *dsf;
+    DSF *dsf;
     int x, y, mainanchor, mainpos, dragpos, solvepos, solvesrc, solvedst;
 
     /*
@@ -2155,7 +2150,7 @@ static void game_redraw(drawing *dr, game_drawstate *ds,
      * Build a dsf out of that board, so we can conveniently tell
      * which edges are connected and which aren't.
      */
-    dsf = snew_dsf(wh);
+    dsf = dsf_new(wh);
     mainanchor = -1;
     for (y = 0; y < h; y++)
 	for (x = 0; x < w; x++) {
@@ -2265,7 +2260,7 @@ static void game_redraw(drawing *dr, game_drawstate *ds,
 	status_bar(dr, statusbuf);
     }
 
-    sfree(dsf);
+    dsf_free(dsf);
     sfree(board);
 }
 
@@ -2302,11 +2297,13 @@ static bool game_timing_state(const game_state *state, game_ui *ui)
     return true;
 }
 
-static void game_print_size(const game_params *params, float *x, float *y)
+static void game_print_size(const game_params *params, const game_ui *ui,
+                            float *x, float *y)
 {
 }
 
-static void game_print(drawing *dr, const game_state *state, int tilesize)
+static void game_print(drawing *dr, const game_state *state, const game_ui *ui,
+                       int tilesize)
 {
 }
 
@@ -2331,10 +2328,11 @@ const struct game thegame = {
     free_game,
     true, solve_game,
     true, game_can_format_as_text_now, game_text_format,
+    NULL, NULL, /* get_prefs, set_prefs */
     new_ui,
     free_ui,
-    encode_ui,
-    decode_ui,
+    NULL, /* encode_ui */
+    NULL, /* decode_ui */
     NULL, /* game_request_keys */
     game_changed_state,
     NULL, /* current_key_label */

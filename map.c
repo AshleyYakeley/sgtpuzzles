@@ -15,7 +15,11 @@
 #include <assert.h>
 #include <ctype.h>
 #include <limits.h>
-#include <math.h>
+#ifdef NO_TGMATH_H
+#  include <math.h>
+#else
+#  include <tgmath.h>
+#endif
 
 #include "puzzles.h"
 
@@ -26,7 +30,7 @@
  */
 #if defined STANDALONE_SOLVER
 #define SOLVER_DIAGNOSTICS
-bool verbose = false;
+static bool verbose = false;
 #elif defined SOLVER_DIAGNOSTICS
 #define verbose true
 #endif
@@ -40,12 +44,6 @@ bool verbose = false;
 #define THREE (FOUR-1)
 #define FIVE (FOUR+1)
 #define SIX (FOUR+2)
-
-/*
- * Ghastly run-time configuration option, just for Gareth (again).
- */
-static int flash_type = -1;
-static float flash_length;
 
 /*
  * Difficulty levels. I do some macro ickery here to ensure that my
@@ -255,7 +253,7 @@ static const char *validate_params(const game_params *params, bool full)
 {
     if (params->w < 2 || params->h < 2)
 	return "Width and height must be at least two";
-    if (params->w > INT_MAX / params->h)
+    if (params->w > INT_MAX / 2 / params->h)
         return "Width times height must not be unreasonably large";
     if (params->n < 5)
 	return "Must have at least five regions";
@@ -1720,8 +1718,8 @@ static const char *parse_edge_list(const game_params *params,
     int i, k, pos;
     bool state;
     const char *p = *desc;
-
-    dsf_init(map+wh, wh);
+    const char *err = NULL;
+    DSF *dsf = dsf_new(wh);
 
     pos = -1;
     state = false;
@@ -1732,8 +1730,10 @@ static const char *parse_edge_list(const game_params *params,
      * pairs of squares whenever the edge list shows a non-edge).
      */
     while (*p && *p != ',') {
-	if (*p < 'a' || *p > 'z')
-	    return "Unexpected character in edge list";
+	if (*p < 'a' || *p > 'z') {
+            err = "Unexpected character in edge list";
+            goto out;
+        }
 	if (*p == 'z')
 	    k = 25;
 	else
@@ -1756,10 +1756,12 @@ static const char *parse_edge_list(const game_params *params,
 		y = (pos - w*(h-1)) % h;
 		dx = 1;
 		dy = 0;
-	    } else
-		return "Too much data in edge list";
+	    } else {
+                err = "Too much data in edge list";
+                goto out;
+            }
 	    if (!state)
-		dsf_merge(map+wh, y*w+x, (y+dy)*w+(x+dx));
+		dsf_merge(dsf, y*w+x, (y+dy)*w+(x+dx));
 
 	    pos++;
 	}
@@ -1768,8 +1770,10 @@ static const char *parse_edge_list(const game_params *params,
 	p++;
     }
     assert(pos <= 2*wh-w-h);
-    if (pos < 2*wh-w-h)
-	return "Too little data in edge list";
+    if (pos < 2*wh-w-h) {
+        err = "Too little data in edge list";
+        goto out;
+    }
 
     /*
      * Now go through again and allocate region numbers.
@@ -1778,17 +1782,22 @@ static const char *parse_edge_list(const game_params *params,
     for (i = 0; i < wh; i++)
 	map[i] = -1;
     for (i = 0; i < wh; i++) {
-	k = dsf_canonify(map+wh, i);
+	k = dsf_canonify(dsf, i);
 	if (map[k] < 0)
 	    map[k] = pos++;
 	map[i] = map[k];
     }
-    if (pos != n)
-	return "Edge list defines the wrong number of regions";
+    if (pos != n) {
+        err = "Edge list defines the wrong number of regions";
+        goto out;
+    }
 
     *desc = p;
+    err = NULL; /* no error */
 
-    return NULL;
+  out:
+    dsf_free(dsf);
+    return err;
 }
 
 static const char *validate_desc(const game_params *params, const char *desc)
@@ -1798,7 +1807,7 @@ static const char *validate_desc(const game_params *params, const char *desc)
     int *map;
     const char *ret;
 
-    map = snewn(2*wh, int);
+    map = snewn(wh, int);
     ret = parse_edge_list(params, &desc, map);
     sfree(map);
     if (ret)
@@ -2261,16 +2270,6 @@ static char *solve_game(const game_state *state, const game_state *currstate,
     return dupstr(aux);
 }
 
-static bool game_can_format_as_text_now(const game_params *params)
-{
-    return true;
-}
-
-static char *game_text_format(const game_state *state)
-{
-    return NULL;
-}
-
 struct game_ui {
     /*
      * drag_colour:
@@ -2287,7 +2286,36 @@ struct game_ui {
 
     int cur_x, cur_y, cur_lastmove;
     bool cur_visible, cur_moved;
+
+    /*
+     * User preference to enable alternative versions of the
+     * completion flash. Some users have found the colour-cycling
+     * default version to be a bit eye-twisting.
+     */
+    enum {
+        FLASH_CYCLIC,          /* cycle the four colours of the map */
+        FLASH_EACH_TO_WHITE,   /* turn each colour white in turn */
+        FLASH_ALL_TO_WHITE     /* flash the whole map to white in one go */
+    } flash_type;
 };
+
+static void legacy_prefs_override(struct game_ui *ui_out)
+{
+    static bool initialised = false;
+    static int flash_type = -1;
+
+    if (!initialised) {
+        char *env;
+
+        initialised = true;
+
+        if ((env = getenv("MAP_ALTERNATIVE_FLASH")) != NULL)
+            flash_type = FLASH_EACH_TO_WHITE;
+    }
+
+    if (flash_type != -1)
+        ui_out->flash_type = flash_type;
+}
 
 static game_ui *new_ui(const game_state *state)
 {
@@ -2297,24 +2325,41 @@ static game_ui *new_ui(const game_state *state)
     ui->drag_pencil = 0;
     ui->show_numbers = false;
     ui->cur_x = ui->cur_y = 0;
-    ui->cur_visible = false;
+    ui->cur_visible = getenv_bool("PUZZLES_SHOW_CURSOR", false);
     ui->cur_moved = false;
     ui->cur_lastmove = 0;
+    ui->flash_type = FLASH_CYCLIC;
+    legacy_prefs_override(ui);
     return ui;
+}
+
+static config_item *get_prefs(game_ui *ui)
+{
+    config_item *ret;
+
+    ret = snewn(2, config_item);
+
+    ret[0].name = "Victory flash effect";
+    ret[0].kw = "flash-type";
+    ret[0].type = C_CHOICES;
+    ret[0].u.choices.choicenames = ":Cyclic:Each to white:All to white";
+    ret[0].u.choices.choicekws = ":cyclic:each-white:all-white";
+    ret[0].u.choices.selected = ui->flash_type;
+
+    ret[1].name = NULL;
+    ret[1].type = C_END;
+
+    return ret;
+}
+
+static void set_prefs(game_ui *ui, const config_item *cfg)
+{
+    ui->flash_type = cfg[0].u.choices.selected;
 }
 
 static void free_ui(game_ui *ui)
 {
     sfree(ui);
-}
-
-static char *encode_ui(const game_ui *ui)
-{
-    return NULL;
-}
-
-static void decode_ui(game_ui *ui, const char *encoding)
-{
 }
 
 static void game_changed_state(game_ui *ui, const game_state *oldstate,
@@ -2634,7 +2679,7 @@ static game_state *execute_move(const game_state *state, const char *move)
  */
 
 static void game_compute_size(const game_params *params, int tilesize,
-                              int *x, int *y)
+                              const game_ui *ui, int *x, int *y)
 {
     /* Ick: fake up `ds->tilesize' for macro expansion purposes */
     struct { int tilesize; } ads, *ds = &ads;
@@ -2886,6 +2931,11 @@ static void draw_square(drawing *dr, game_drawstate *ds,
     draw_update(dr, COORD(x), COORD(y), TILESIZE, TILESIZE);
 }
 
+static float flash_length(const game_ui *ui)
+{
+    return (ui->flash_type == FLASH_EACH_TO_WHITE ? 0.50F : 0.30F);
+}
+
 static void game_redraw(drawing *dr, game_drawstate *ds,
                         const game_state *oldstate, const game_state *state,
                         int dir, const game_ui *ui,
@@ -2909,10 +2959,10 @@ static void game_redraw(drawing *dr, game_drawstate *ds,
     }
 
     if (flashtime) {
-	if (flash_type == 1)
-	    flash = (int)(flashtime * FOUR / flash_length);
+	if (ui->flash_type == FLASH_EACH_TO_WHITE)
+	    flash = (int)(flashtime * FOUR / flash_length(ui));
 	else
-	    flash = 1 + (int)(flashtime * THREE / flash_length);
+	    flash = 1 + (int)(flashtime * THREE / flash_length(ui));
     } else
 	flash = -1;
 
@@ -2931,12 +2981,12 @@ static void game_redraw(drawing *dr, game_drawstate *ds,
 		bv = FOUR;
 
 	    if (flash >= 0) {
-		if (flash_type == 1) {
+		if (ui->flash_type == FLASH_EACH_TO_WHITE) {
 		    if (tv == flash)
 			tv = FOUR;
 		    if (bv == flash)
 			bv = FOUR;
-		} else if (flash_type == 2) {
+		} else if (ui->flash_type == FLASH_ALL_TO_WHITE) {
 		    if (flash % 2)
 			tv = bv = FOUR;
 		} else {
@@ -3066,15 +3116,7 @@ static float game_flash_length(const game_state *oldstate,
 {
     if (!oldstate->completed && newstate->completed &&
 	!oldstate->cheated && !newstate->cheated) {
-	if (flash_type < 0) {
-	    char *env = getenv("MAP_ALTERNATIVE_FLASH");
-	    if (env)
-		flash_type = atoi(env);
-	    else
-		flash_type = 0;
-	    flash_length = (flash_type == 1 ? 0.50F : 0.30F);
-	}
-	return flash_length;
+	return flash_length(ui);
     } else
 	return 0.0F;
 }
@@ -3097,12 +3139,8 @@ static int game_status(const game_state *state)
     return state->completed ? +1 : 0;
 }
 
-static bool game_timing_state(const game_state *state, game_ui *ui)
-{
-    return true;
-}
-
-static void game_print_size(const game_params *params, float *x, float *y)
+static void game_print_size(const game_params *params, const game_ui *ui,
+                            float *x, float *y)
 {
     int pw, ph;
 
@@ -3111,12 +3149,13 @@ static void game_print_size(const game_params *params, float *x, float *y)
      * compute this size is to compute the pixel puzzle size at a
      * given tile size and then scale.
      */
-    game_compute_size(params, 400, &pw, &ph);
+    game_compute_size(params, 400, ui, &pw, &ph);
     *x = pw / 100.0F;
     *y = ph / 100.0F;
 }
 
-static void game_print(drawing *dr, const game_state *state, int tilesize)
+static void game_print(drawing *dr, const game_state *state, const game_ui *ui,
+                       int tilesize)
 {
     int w = state->p.w, h = state->p.h, wh = w*h, n = state->p.n;
     int ink, c[FOUR], i;
@@ -3275,11 +3314,12 @@ const struct game thegame = {
     dup_game,
     free_game,
     true, solve_game,
-    false, game_can_format_as_text_now, game_text_format,
+    false, NULL, NULL, /* can_format_as_text_now, text_format */
+    get_prefs, set_prefs,
     new_ui,
     free_ui,
-    encode_ui,
-    decode_ui,
+    NULL, /* encode_ui */
+    NULL, /* decode_ui */
     NULL, /* game_request_keys */
     game_changed_state,
     current_key_label,
@@ -3296,7 +3336,7 @@ const struct game thegame = {
     game_status,
     true, true, game_print_size, game_print,
     false,			       /* wants_statusbar */
-    false, game_timing_state,
+    false, NULL,                       /* timing_state */
     0,				       /* flags */
 };
 

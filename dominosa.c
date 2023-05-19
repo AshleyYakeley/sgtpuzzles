@@ -48,7 +48,11 @@
 #include <assert.h>
 #include <ctype.h>
 #include <limits.h>
-#include <math.h>
+#ifdef NO_TGMATH_H
+#  include <math.h>
+#else
+#  include <tgmath.h>
+#endif
 
 #include "puzzles.h"
 
@@ -259,9 +263,9 @@ static const char *validate_params(const game_params *params, bool full)
 
 #ifdef STANDALONE_SOLVER
 #define SOLVER_DIAGNOSTICS
-bool solver_diagnostics = false;
+static bool solver_diagnostics = false;
 #elif defined SOLVER_DIAGNOSTICS
-const bool solver_diagnostics = true;
+static const bool solver_diagnostics = true;
 #endif
 
 struct solver_domino;
@@ -347,6 +351,7 @@ struct solver_scratch {
     struct findloopstate *fls;
     bool squares_by_number_initialised;
     int *wh_scratch, *pc_scratch, *pc_scratch2, *dc_scratch;
+    DSF *dsf_scratch;
 };
 
 static struct solver_scratch *solver_make_scratch(int n)
@@ -478,6 +483,7 @@ static struct solver_scratch *solver_make_scratch(int n)
     sc->wh_scratch = NULL;
     sc->pc_scratch = sc->pc_scratch2 = NULL;
     sc->dc_scratch = NULL;
+    sc->dsf_scratch = NULL;
 
     return sc;
 }
@@ -505,6 +511,7 @@ static void solver_free_scratch(struct solver_scratch *sc)
     sfree(sc->pc_scratch);
     sfree(sc->pc_scratch2);
     sfree(sc->dc_scratch);
+    dsf_free(sc->dsf_scratch);
     sfree(sc);
 }
 
@@ -930,7 +937,7 @@ struct parity_findloop_ctx {
     int i;
 };
 
-int parity_neighbour(int vertex, void *vctx)
+static int parity_neighbour(int vertex, void *vctx)
 {
     struct parity_findloop_ctx *ctx = (struct parity_findloop_ctx *)vctx;
     struct solver_placement *p;
@@ -1421,21 +1428,23 @@ static bool deduce_forcing_chain(struct solver_scratch *sc)
         sc->pc_scratch2 = snewn(sc->pc, int);
     if (!sc->dc_scratch)
         sc->dc_scratch = snewn(sc->dc, int);
+    if (!sc->dsf_scratch)
+        sc->dsf_scratch = dsf_new_flip(sc->pc);
 
     /*
      * Start by identifying chains of placements which must all occur
      * together if any of them occurs. We do this by making
-     * pc_scratch2 an edsf binding the placements into an equivalence
+     * dsf_scratch a flip dsf binding the placements into an equivalence
      * class for each entire forcing chain, with the two possible sets
      * of dominoes for the chain listed as inverses.
      */
-    dsf_init(sc->pc_scratch2, sc->pc);
+    dsf_reinit(sc->dsf_scratch);
     for (si = 0; si < sc->wh; si++) {
         struct solver_square *sq = &sc->squares[si];
         if (sq->nplacements == 2)
-            edsf_merge(sc->pc_scratch2,
-                       sq->placements[0]->index,
-                       sq->placements[1]->index, true);
+            dsf_merge_flip(sc->dsf_scratch,
+                           sq->placements[0]->index,
+                           sq->placements[1]->index, true);
     }
     /*
      * Now read out the whole dsf into pc_scratch, flattening its
@@ -1448,7 +1457,7 @@ static bool deduce_forcing_chain(struct solver_scratch *sc)
      */
     for (pi = 0; pi < sc->pc; pi++) {
         bool inv;
-        int c = edsf_canonify(sc->pc_scratch2, pi, &inv);
+        int c = dsf_canonify_flip(sc->dsf_scratch, pi, &inv);
         sc->pc_scratch[pi] = c * 2 + (inv ? 1 : 0);
     }
 
@@ -2713,7 +2722,7 @@ static game_ui *new_ui(const game_state *state)
 {
     game_ui *ui = snew(game_ui);
     ui->cur_x = ui->cur_y = 0;
-    ui->cur_visible = false;
+    ui->cur_visible = getenv_bool("PUZZLES_SHOW_CURSOR", false);
     ui->highlight_1 = ui->highlight_2 = -1;
     return ui;
 }
@@ -2721,15 +2730,6 @@ static game_ui *new_ui(const game_state *state)
 static void free_ui(game_ui *ui)
 {
     sfree(ui);
-}
-
-static char *encode_ui(const game_ui *ui)
-{
-    return NULL;
-}
-
-static void decode_ui(game_ui *ui, const char *encoding)
-{
 }
 
 static void game_changed_state(game_ui *ui, const game_state *oldstate,
@@ -2896,7 +2896,8 @@ static game_state *execute_move(const game_state *state, const char *move)
             move++;
         } else if (move[0] == 'D' &&
                    sscanf(move+1, "%d,%d%n", &d1, &d2, &p) == 2 &&
-                   d1 >= 0 && d1 < wh && d2 >= 0 && d2 < wh && d1 < d2) {
+                   d1 >= 0 && d1 < wh && d2 >= 0 && d2 < wh && d1 < d2 &&
+                   (d2 - d1 == 1 || d2 - d1 == w)) {
 
             /*
              * Toggle domino presence between d1 and d2.
@@ -2964,7 +2965,8 @@ static game_state *execute_move(const game_state *state, const char *move)
         } else if (move[0] == 'E' &&
                    sscanf(move+1, "%d,%d%n", &d1, &d2, &p) == 2 &&
                    d1 >= 0 && d1 < wh && d2 >= 0 && d2 < wh && d1 < d2 &&
-                   ret->grid[d1] == d1 && ret->grid[d2] == d2) {
+                   ret->grid[d1] == d1 && ret->grid[d2] == d2 &&
+                   (d2 - d1 == 1 || d2 - d1 == w)) {
 
             /*
              * Toggle edge presence between d1 and d2.
@@ -3029,7 +3031,7 @@ static game_state *execute_move(const game_state *state, const char *move)
  */
 
 static void game_compute_size(const game_params *params, int tilesize,
-                              int *x, int *y)
+                              const game_ui *ui, int *x, int *y)
 {
     int n = params->n, w = n+2, h = n+1;
 
@@ -3369,24 +3371,21 @@ static int game_status(const game_state *state)
     return state->completed ? +1 : 0;
 }
 
-static bool game_timing_state(const game_state *state, game_ui *ui)
-{
-    return true;
-}
-
-static void game_print_size(const game_params *params, float *x, float *y)
+static void game_print_size(const game_params *params, const game_ui *ui,
+                            float *x, float *y)
 {
     int pw, ph;
 
     /*
      * I'll use 6mm squares by default.
      */
-    game_compute_size(params, 600, &pw, &ph);
+    game_compute_size(params, 600, ui, &pw, &ph);
     *x = pw / 100.0F;
     *y = ph / 100.0F;
 }
 
-static void game_print(drawing *dr, const game_state *state, int tilesize)
+static void game_print(drawing *dr, const game_state *state, const game_ui *ui,
+                       int tilesize)
 {
     int w = state->w, h = state->h;
     int c, x, y;
@@ -3443,10 +3442,11 @@ const struct game thegame = {
     free_game,
     true, solve_game,
     true, game_can_format_as_text_now, game_text_format,
+    NULL, NULL, /* get_prefs, set_prefs */
     new_ui,
     free_ui,
-    encode_ui,
-    decode_ui,
+    NULL, /* encode_ui */
+    NULL, /* decode_ui */
     NULL, /* game_request_keys */
     game_changed_state,
     current_key_label,
@@ -3463,7 +3463,7 @@ const struct game thegame = {
     game_status,
     true, false, game_print_size, game_print,
     false,			       /* wants_statusbar */
-    false, game_timing_state,
+    false, NULL,                       /* timing_state */
     0,				       /* flags */
 };
 

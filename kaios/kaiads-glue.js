@@ -11,7 +11,7 @@
 (function() {
     // To run, we need to be on KaiOS with the KaiAds SDK and the
     // Open Web Apps API.
-    if (!getKaiAd || !navigator.mozApps ||
+    if (window.getKaiAd === undefined || navigator.mozApps === undefined ||
         navigator.userAgent.toLowerCase().indexOf('kaios') == -1) return;
     // If those prerequisites are satisfied, install the button.
     var advertbutton = document.createElement("button");
@@ -20,7 +20,9 @@
     advertbutton.disabled = true;
     var advertli = document.createElement("li");
     advertli.appendChild(advertbutton);
-    menuform.querySelector("ul").appendChild(advertli);
+    var topmenu = menuform.querySelector("ul");
+    var before = topmenu.querySelector(":scope > li:nth-last-child(2)");
+    topmenu.insertBefore(advertli, before);
     // Now work out whether we're installed from the Store (and hence
     // want real adverts) or not (and hence want test ones).
     var selfrequest = navigator.mozApps.getSelf();
@@ -37,7 +39,7 @@
             getKaiAd({
                 publisher: 'dac9c115-ec42-4175-ac5e-47e118cc541b',
                 test: testmode ? 1 : 0,
-                timeout: 5000,
+                timeout: 10000,
                 onready: function(ad) {
                     ad.on('close', function () {
                         // KaiAds adds inline styles to the body and doesn't

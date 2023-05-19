@@ -32,7 +32,11 @@
 #include <assert.h>
 #include <ctype.h>
 #include <limits.h>
-#include <math.h>
+#ifdef NO_TGMATH_H
+#  include <math.h>
+#else
+#  include <tgmath.h>
+#endif
 
 #include "puzzles.h"
 
@@ -141,13 +145,13 @@ static void decode_params(game_params *ret, char const *string)
         if (*string == 'c') {
             string++;
 	    ret->colours = atoi(string);
-            while (string[1] && isdigit((unsigned char)string[1])) string++;
+            while (*string && isdigit((unsigned char)*string)) string++;
 	} else if (*string == 'm') {
             string++;
 	    ret->leniency = atoi(string);
-            while (string[1] && isdigit((unsigned char)string[1])) string++;
-	}
-	string++;
+            while (*string && isdigit((unsigned char)*string)) string++;
+	} else
+            string++;
     }
 }
 
@@ -775,7 +779,7 @@ struct game_ui {
 static game_ui *new_ui(const game_state *state)
 {
     struct game_ui *ui = snew(struct game_ui);
-    ui->cursor_visible = false;
+    ui->cursor_visible = getenv_bool("PUZZLES_SHOW_CURSOR", false);
     ui->cx = FILLX;
     ui->cy = FILLY;
     return ui;
@@ -784,15 +788,6 @@ static game_ui *new_ui(const game_state *state)
 static void free_ui(game_ui *ui)
 {
     sfree(ui);
-}
-
-static char *encode_ui(const game_ui *ui)
-{
-    return NULL;
-}
-
-static void decode_ui(game_ui *ui, const char *encoding)
-{
 }
 
 static void game_changed_state(game_ui *ui, const game_state *oldstate,
@@ -886,7 +881,8 @@ static game_state *execute_move(const game_state *state, const char *move)
 
     if (move[0] == 'M' &&
         sscanf(move+1, "%d", &c) == 1 &&
-        c >= 0 &&
+        c >= 0 && c < state->colours &&
+        c != state->grid[FILLY * state->w + FILLX] &&
         !state->complete) {
         int *queue = snewn(state->w * state->h, int);
 	ret = dup_game(state);
@@ -937,11 +933,23 @@ static game_state *execute_move(const game_state *state, const char *move)
 
         sol->moves = snewn(sol->nmoves, char);
         for (i = 0, p = move; i < sol->nmoves; i++) {
-            assert(*p);
+            if (!*p) {
+              badsolve:
+                sfree(sol->moves);
+                sfree(sol);
+                return NULL;
+            };
             sol->moves[i] = atoi(p);
+            if (sol->moves[i] < 0 || sol->moves[i] >= state->colours ||
+                (i == 0 ?
+                 sol->moves[i] == state->grid[FILLY * state->w + FILLX] :
+                 sol->moves[i] == sol->moves[i-1]))
+                /* Solution contains a fill with an invalid colour or
+                 * the current colour. */
+                goto badsolve;
             p += strspn(p, "0123456789");
             if (*p) {
-                assert(*p == ',');
+                if (*p != ',') goto badsolve;
                 p++;
             }
         }
@@ -966,7 +974,7 @@ static game_state *execute_move(const game_state *state, const char *move)
  */
 
 static void game_compute_size(const game_params *params, int tilesize,
-                              int *x, int *y)
+                              const game_ui *ui, int *x, int *y)
 {
     /* Ick: fake up `ds->tilesize' for macro expansion purposes */
     struct { int tilesize; } ads, *ds = &ads;
@@ -1336,19 +1344,6 @@ static float game_flash_length(const game_state *oldstate,
     return 0.0F;
 }
 
-static bool game_timing_state(const game_state *state, game_ui *ui)
-{
-    return true;
-}
-
-static void game_print_size(const game_params *params, float *x, float *y)
-{
-}
-
-static void game_print(drawing *dr, const game_state *state, int tilesize)
-{
-}
-
 #ifdef COMBINED
 #define thegame flood
 #endif
@@ -1370,10 +1365,11 @@ const struct game thegame = {
     free_game,
     true, solve_game,
     true, game_can_format_as_text_now, game_text_format,
+    NULL, NULL, /* get_prefs, set_prefs */
     new_ui,
     free_ui,
-    encode_ui,
-    decode_ui,
+    NULL, /* encode_ui */
+    NULL, /* decode_ui */
     NULL, /* game_request_keys */
     game_changed_state,
     current_key_label,
@@ -1388,8 +1384,8 @@ const struct game thegame = {
     game_flash_length,
     game_get_cursor_location,
     game_status,
-    false, false, game_print_size, game_print,
+    false, false, NULL, NULL,          /* print_size, print */
     true,			       /* wants_statusbar */
-    false, game_timing_state,
+    false, NULL,                       /* timing_state */
     0,				       /* flags */
 };

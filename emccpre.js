@@ -19,6 +19,12 @@
 // immediately.  On the other hand, the Emscripten runtime hasn't
 // started yet, so Module.cwrap isn't safe.
 
+// Error handler to make any failures from here on visible to the
+// user, maybe.
+window.addEventListener("error", function (e) {
+    alert(e.message);
+});
+
 // To avoid flicker while doing complicated drawing, we use two
 // canvases, the same size. One is actually on the web page, and the
 // other is off-screen. We do all our drawing on the off-screen one
@@ -129,6 +135,17 @@ var dlg_return_funcs = null;
 // pass back the final value in each dialog control.
 var dlg_return_sval, dlg_return_ival;
 
+// Callback for reading from a savefile.  This will be filled in with
+// a suitable closure by the JS loading code and called by
+// js_savefile_read().  This assumes that only one file can be in the
+// process of loading at a time.
+var savefile_read_callback;
+
+// void prefs_load_callback(midend *me, const char *prefs);
+//
+// Callback for passing in preferences data retrieved from localStorage.
+var prefs_load_callback;
+
 // The <ul> object implementing the game-type drop-down, and a list of
 // the sub-lists inside it. Used by js_add_preset().
 var gametypelist = document.getElementById("gametype");
@@ -149,6 +166,7 @@ var permalink_desc = document.getElementById("permalink-desc");
 // The various buttons. Undo and redo are used by js_enable_undo_redo().
 var specific_button = document.getElementById("specific");
 var random_button = document.getElementById("random");
+var prefs_button = document.getElementById("prefs");
 var new_button = document.getElementById("new");
 var restart_button = document.getElementById("restart");
 var undo_button = document.getElementById("undo");
@@ -278,6 +296,15 @@ function dialog_cleanup() {
     onscreen_canvas.focus();
 }
 
+function set_capture(element, event) {
+    // This is only needed if we don't have Pointer Events available.
+    if (element.setCapture !== undefined &&
+        element.setPointerCapture === undefined) {
+        element.setCapture(true);
+        return;
+    }
+}
+
 // Init function called early in main().
 function initPuzzle() {
     // Construct the off-screen canvas used for double buffering.
@@ -304,6 +331,13 @@ function initPuzzle() {
         return toret;
     };
 
+    onscreen_canvas.onpointerdown = function(event) {
+        // Arrange that all mouse (and pointer) events are sent to
+        // this element until all buttons are released.  We can assume
+        // that if we managed to receive a pointerdown event,
+        // Element.setPointerCapture() is available.
+        onscreen_canvas.setPointerCapture(event.pointerId);
+    }
     onscreen_canvas.onmousedown = function(event) {
         if (event.button >= 3)
             return;
@@ -319,7 +353,7 @@ function initPuzzle() {
             event.preventDefault();
         button_phys2log[event.button] = logbutton;
 
-        onscreen_canvas.setCapture(true);
+        set_capture(onscreen_canvas, event);
     };
     var mousemove = Module.cwrap('mousemove', 'boolean',
                                  ['number', 'number', 'number']);
@@ -397,11 +431,15 @@ function initPuzzle() {
         if (dlg_dimmer === null)
             command(9);
     };
+    if (prefs_button) prefs_button.onclick = function(event) {
+        if (dlg_dimmer === null)
+            command(10);
+    };
 
     // 'number' is used for C pointers
     var get_save_file = Module.cwrap('get_save_file', 'number', []);
     var free_save_file = Module.cwrap('free_save_file', 'void', ['number']);
-    var load_game = Module.cwrap('load_game', 'void', ['string', 'number']);
+    var load_game = Module.cwrap('load_game', 'void', []);
 
     if (save_button) save_button.onclick = function(event) {
         if (dlg_dimmer === null) {
@@ -434,11 +472,23 @@ function initPuzzle() {
                 if (input.files.length == 1) {
                     var file = input.files.item(0);
                     var reader = new FileReader();
-                    reader.addEventListener("loadend", function() {
-                        var string = reader.result;
-                        load_game(string, string.length);
+                    reader.addEventListener("load", function() {
+                        var pos = 0;
+                        savefile_read_callback = function(buf, len) {
+                            if (pos + len > reader.result.byteLength)
+                                return false;
+                            writeArrayToMemory(
+                                new Int8Array(reader.result, pos, len), buf);
+                            pos += len;
+                            return true;
+                        }
+                        load_game();
+                        savefile_read_callback = null;
                     });
-                    reader.readAsText(file);
+                    reader.addEventListener("error", function() {
+                        alert("An error occured while loading the file");
+                    });
+                    reader.readAsArrayBuffer(file);
                 }
             });
             input.click();
@@ -614,7 +664,7 @@ function initPuzzle() {
         // Key to open the menu on KaiOS.
         if ((event.key == "SoftRight" || event.key == "F10") &&
             !menuform.contains(document.activeElement)) {
-            menuform.querySelector("li div").focus();
+            menuform.querySelector("li div, li button").focus();
             event.preventDefault();
             event.stopPropagation();
         }
@@ -642,6 +692,8 @@ function initPuzzle() {
     dlg_return_ival = Module.cwrap('dlg_return_ival', 'void',
                                    ['number','number']);
     timer_callback = Module.cwrap('timer_callback', 'void', ['number']);
+    prefs_load_callback = Module.cwrap('prefs_load_callback', 'void',
+                                       ['number','string']);
 
     if (resizable_div !== null) {
         var resize_handle = document.getElementById("resizehandle");
@@ -652,6 +704,9 @@ function initPuzzle() {
         var restore_puzzle_size = Module.cwrap('restore_puzzle_size',
                                                'void', []);
         resize_handle.oncontextmenu = function(event) { return false; }
+        resize_handle.onpointerdown = function(event) {
+            resize_handle.setPointerCapture(event.pointerId);
+        }
         resize_handle.onmousedown = function(event) {
             if (event.button == 0) {
                 var xy = element_coords(onscreen_canvas);
@@ -664,7 +719,7 @@ function initPuzzle() {
             } else {
                 restore_pending = true;
             }
-            resize_handle.setCapture(true);
+            set_capture(resize_handle, event);
             event.preventDefault();
         };
         window.addEventListener("mousemove", function(event) {

@@ -976,7 +976,7 @@ static int path_cmp(const void *a, const void *b) {
 
 static char *new_game_desc(const game_params *params, random_state *rs,
                            char **aux, bool interactive) {
-    int i,count,c,w,h,r,p,g;
+    int count,c,w,h,r,p,g;
     game_state *new;
 
     /* Variables for puzzle generation algorithm */
@@ -997,7 +997,6 @@ static char *new_game_desc(const game_params *params, random_state *rs,
     char *e;
     char *desc; 
 
-    i = 0;
     while (true) {
         new = new_state(params);
         abort = false;
@@ -1257,7 +1256,6 @@ static char *new_game_desc(const game_params *params, random_state *rs,
          * difficulty level, free memory and start from scratch */    
         sfree(old_guess);
         free_game(new);
-        i++;
     }
     
     /* We have a valid puzzle! */
@@ -1578,6 +1576,8 @@ static char *solve_game(const game_state *state_start, const game_state *currsta
     }
 
 /*  printf("Puzzle solved at level %s, iterations %d, ambiguous %d\n", (solved_bruteforce ? "TRICKY" : "NORMAL"), iterative_depth, count_ambiguous); */
+    (void)iterative_depth;
+    (void)count_ambiguous;
 
     move = snewn(solve_state->common->num_total * 4 +2, char);
     c = move;
@@ -1774,7 +1774,7 @@ static char *interpret_move(const game_state *state, game_ui *ui,
 
     if (button == 'a' || button == 'A') {
         ui->ascii = !ui->ascii;
-        return UI_UPDATE;
+        return MOVE_UI_UPDATE;
     }
 
     if (button == 'm' || button == 'M') {
@@ -1787,21 +1787,21 @@ static char *interpret_move(const game_state *state, game_ui *ui,
             if (button == 'g' || button == 'G' || button == '1') {
                 if (!ui->hcursor) ui->hshow = false;
                 if (state->guess[xi] == 1)
-                    return ui->hcursor ? NULL : UI_UPDATE;
+                    return ui->hcursor ? NULL : MOVE_UI_UPDATE;
                 sprintf(buf,"G%d",xi);
                 return dupstr(buf);
             }
             if (button == 'v' || button == 'V' || button == '2') {
                 if (!ui->hcursor) ui->hshow = false;
                 if (state->guess[xi] == 2)
-                    return ui->hcursor ? NULL : UI_UPDATE;
+                    return ui->hcursor ? NULL : MOVE_UI_UPDATE;
                 sprintf(buf,"V%d",xi);
                 return dupstr(buf);
             }
             if (button == 'z' || button == 'Z' || button == '3') {
                 if (!ui->hcursor) ui->hshow = false;
                 if (state->guess[xi] == 4)
-                    return ui->hcursor ? NULL : UI_UPDATE;
+                    return ui->hcursor ? NULL : MOVE_UI_UPDATE;
                 sprintf(buf,"Z%d",xi);
                 return dupstr(buf);
             }
@@ -1809,7 +1809,7 @@ static char *interpret_move(const game_state *state, game_ui *ui,
                 button == '0' || button == '\b' ) {
                 if (!ui->hcursor) ui->hshow = false;
                 if (state->guess[xi] == 7 && state->pencils[xi] == 0)
-                    return ui->hcursor ? NULL : UI_UPDATE;
+                    return ui->hcursor ? NULL : MOVE_UI_UPDATE;
                 sprintf(buf,"E%d",xi);
                 return dupstr(buf);
             }
@@ -1829,12 +1829,12 @@ static char *interpret_move(const game_state *state, game_ui *ui,
             }
         ui->hshow = true;
         ui->hcursor = true;
-        return UI_UPDATE;
+        return MOVE_UI_UPDATE;
     }
     if (ui->hshow && button == CURSOR_SELECT) {
         ui->hpencil = !ui->hpencil;
         ui->hcursor = true;
-        return UI_UPDATE;
+        return MOVE_UI_UPDATE;
     }
 
     if (ui->hshow && ui->hpencil) {
@@ -1871,7 +1871,7 @@ static char *interpret_move(const game_state *state, game_ui *ui,
                     ui->hshow = false;
                 }
                 if (state->pencils[xi] == 0)
-                    return ui->hcursor ? NULL : UI_UPDATE;
+                    return ui->hcursor ? NULL : MOVE_UI_UPDATE;
                 sprintf(buf,"E%d",xi);
                 return dupstr(buf);
             }
@@ -1888,14 +1888,14 @@ static char *interpret_move(const game_state *state, game_ui *ui,
                     ui->hpencil = false;
                     ui->hcursor = false;
                     ui->hx = gx; ui->hy = gy;
-                    return UI_UPDATE;
+                    return MOVE_UI_UPDATE;
                 }
                 else if (button == RIGHT_BUTTON && g == 7) {
                     ui->hshow = true;
                     ui->hpencil = true;
                     ui->hcursor = false;
                     ui->hx = gx; ui->hy = gy;
-                    return UI_UPDATE;
+                    return MOVE_UI_UPDATE;
                 }
             }
             else if (ui->hshow) {
@@ -1906,14 +1906,14 @@ static char *interpret_move(const game_state *state, game_ui *ui,
                             ui->hpencil = false;
                             ui->hcursor = false;
                             ui->hx = 0; ui->hy = 0;
-                            return UI_UPDATE;
+                            return MOVE_UI_UPDATE;
                         }
                         else {
                             ui->hshow = true;
                             ui->hpencil = false;
                             ui->hcursor = false;
                             ui->hx = gx; ui->hy = gy;
-                            return UI_UPDATE;
+                            return MOVE_UI_UPDATE;
                         }
                     }
                     else {
@@ -1921,7 +1921,7 @@ static char *interpret_move(const game_state *state, game_ui *ui,
                         ui->hpencil = false;
                         ui->hcursor = false;
                         ui->hx = gx; ui->hy = gy;
-                        return UI_UPDATE;
+                        return MOVE_UI_UPDATE;
                     }
                 }
                 else if (button == RIGHT_BUTTON) {
@@ -1930,7 +1930,7 @@ static char *interpret_move(const game_state *state, game_ui *ui,
                         ui->hpencil = true;
                         ui->hcursor = false;
                         ui->hx = gx; ui->hy = gy;
-                        return UI_UPDATE;
+                        return MOVE_UI_UPDATE;
                     }
                     else {
                         if (gx == ui->hx && gy == ui->hy) {
@@ -1938,14 +1938,14 @@ static char *interpret_move(const game_state *state, game_ui *ui,
                             ui->hpencil = false;
                             ui->hcursor = false;
                             ui->hx = 0; ui->hy = 0;
-                            return UI_UPDATE;
+                            return MOVE_UI_UPDATE;
                         }
                         else if (g == 7) {
                             ui->hshow = true;
                             ui->hpencil = true;
                             ui->hcursor = false;
                             ui->hx = gx; ui->hy = gy;
-                            return UI_UPDATE;
+                            return MOVE_UI_UPDATE;
                         }
                     }
                 }

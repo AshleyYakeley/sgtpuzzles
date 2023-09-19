@@ -1,0 +1,40 @@
+{
+  "nodes": {
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1694937365,
+        "narHash": "sha256-iHZSGrb9gVpZRR4B2ishUN/1LRKWtSHZNO37C8z1SmA=",
+        "owner": "nixos",
+        "repo": "nixpkgs",
+        "rev": "5d017a8822e0907fb96f7700a319f9fe2434de02",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nixos",
+        "ref": "nixos-23.05",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "nixpkgs": "nixpkgs",
+        "sgt-puzzles-menu": "sgt-puzzles-menu"
+      }
+    },
+    "sgt-puzzles-menu": {
+      "flake": false,
+      "locked": {
+        "narHash": "sha256-pZt+EmmD2d4hmdIoAdvYjgOngxoJP+rJV8WIZUf4L9E=",
+        "type": "file",
+        "url": "https://raw.githubusercontent.com/gentoo/gentoo/720e614d0107e86fc1e520bac17726578186843d/games-puzzle/sgt-puzzles/files/sgt-puzzles.menu"
+      },
+      "original": {
+        "type": "file",
+        "url": "https://raw.githubusercontent.com/gentoo/gentoo/720e614d0107e86fc1e520bac17726578186843d/games-puzzle/sgt-puzzles/files/sgt-puzzles.menu"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}

@@ -36,7 +36,7 @@
 
 This is a collection of small one-player puzzle games.
 
-\copyright This manual is copyright 2004-2023 Simon Tatham. All rights
+\copyright This manual is copyright 2004-2024 Simon Tatham. All rights
 reserved. You may distribute this documentation under the MIT licence.
 See \k{licence} for the licence text in full.
 
@@ -1538,9 +1538,10 @@ the return key will place a domino covering those numbers, or
 pressing the space bar will lay a line between the two squares.
 Repeating either action removes the domino or line.
 
-Pressing a number key will highlight all occurrences of that
-number. Pressing that number again will clear the highlighting. Up to two
-different numbers can be highlighted at any given time.
+Pressing a number key or right-clicking on a number will highlight all
+occurrences of that number. Pressing or right-clicking that number again
+will clear the highlighting. Up to two different numbers can be highlighted
+at any given time.
 
 (All the actions described in \k{common-actions} are also available.)
 
@@ -1585,6 +1586,11 @@ I originally saw this in the form of a Flash game called \i{Planarity}
 
 To move a point, click on it with the left mouse button and drag it
 into a new position.
+
+The cursor keys may also be used to navigate amongst the
+points. Pressing the Enter key will toggle dragging the
+currently-highlighted point. Pressing Tab or Space will cycle through
+all the points.
 
 (All the actions described in \k{common-actions} are also available.)
 
@@ -1679,7 +1685,10 @@ computer's. So in the above example, you could put the fifth ball at
 \e{any} of the locations marked with an \cw{x}, and you would still
 win.
 
-Black Box was contributed to this collection by James Harvey.
+Black Box was created by Eric Solomon and originally published
+as a board game by Waddingtons in 1977. Acornsoft published versions
+for the Acorn Atom and the BBC Microcomputer in the early 1980s.
+The puzzle was contributed to this collection by James Harvey.
 
 \H{blackbox-controls} \i{Black Box controls}
 
@@ -1923,7 +1932,7 @@ You are given a map consisting of a number of regions. Your task is
 to colour each region with one of four colours, in such a way that
 no two regions sharing a boundary have the same colour. You are
 provided with some regions already coloured, sufficient to make the
-remainder of the solution unique.
+remainder of the solution unique, and these cannot be changed.
 
 Only regions which share a length of border are required to be
 different colours. Two regions which meet at only one \e{point}
@@ -2614,7 +2623,7 @@ fill the square containing the cursor with that number; typing 0 will clear
 it.  You can also select multiple squares for numbering or clearing with the
 return and arrow keys, before typing a digit to fill or clear the highlighted
 squares (as above).  The space bar adds and removes single squares to and from
-the selection.  Backspace and escape remove all squares from the selection.
+the selection.  Escape removes all squares from the selection.
 
 (All the actions described in \k{common-actions} are also available.)
 
@@ -3262,7 +3271,8 @@ Undead has a similar control system to Solo, Unequal and Keen.
 To play Undead, click the mouse in any empty square and then type a
 letter or number on the keyboard indicating the type of monster:
 \q{G} or \q{1} for a ghost, \q{V} or \q{2} for a vampire,
-or \q{Z} or \q{3} for a zombie. If you make a
+or \q{Z} or \q{3} for a zombie. You can also click on a monster in the
+counts at the top to place it in the highlighted square. If you make a
 mistake, click the mouse in the incorrect square and press Space to
 clear it again (or use the Undo feature).
 
@@ -3295,8 +3305,15 @@ If you prefer plain letters of the alphabet to cute monster pictures,
 you can press \q{A} to toggle between showing the monsters as monsters or
 showing them as letters.
 
+Pressing \q{C} or right-clicking any monster count at the top will cycle
+through three styles of monster counts: the total monsters to be placed
+of each type, the number remaining that have yet to be placed (shown as
+negative to distinguish it from the first style), or the number placed
+so far followed by a slash and the total count.
+
 Left-clicking a clue will mark it as done (grey it out), or unmark it
-if it is already marked.
+if it is already marked. The counts at top will automatically gray out
+when the correct number of monsters have been placed.
 
 (All the actions described in \k{common-actions} are also available.)
 
@@ -3317,7 +3334,8 @@ These parameters are available from the \q{Custom...} option on the
 
 On platforms that support user preferences, the \q{Preferences} option
 on the \q{Game} menu will let you configure whether Undead uses letters
-or pictures to represent monsters.
+or pictures to represent monsters and how to display monster counts at the
+top. Unlike the \q{A} and \q{C} keys, these will persist between games.
 
 
 \C{unruly} \i{Unruly}
@@ -3514,10 +3532,15 @@ Palisade was contributed to this collection by Jonas K\u00F6{oe}lker.
 \H{palisade-controls} \I{controls, for Palisade}Palisade controls
 
 Left-click to place an edge.  Right-click to indicate \q{no edge}.
-Alternatively, the arrow keys will move a keyboard cursor.  Holding
-Control while pressing an arrow key will place an edge.  Press
-Shift-arrowkey to switch off an edge.  Repeat an action to perform
-its inverse.
+
+Alternatively, the arrow keys will move a keyboard cursor. Depending
+on the \q{Cursor mode} preference (see \k{palisade-prefs}), the cursor
+will either navigate among the grid squares, or along their
+borders. In \q{Full-grid} mode, hold Control while pressing an arrow
+key to place an edge, and press Shift-arrowkey to switch off an
+edge. In \q{Half-grid} mode, press Enter to place an edge, and Space
+to switch off an edge. In either mode, you can repeat an action to
+perform its inverse.
 
 (All the actions described in \k{common-actions} are also available.)
 
@@ -3533,6 +3556,13 @@ These parameters are available from the \q{Custom...} option on the
 \dt \e{Region size}
 
 \dd The size of the regions into which the grid must be subdivided.
+
+\H{palisade-prefs} \I{preferences, for Palisade}Palisade user preferences
+
+On platforms that support user preferences, the \q{Preferences} option
+on the \q{Game} menu will let you configure the behavior of the cursor
+keys to either navigate among full grid squares, or along the borders
+of the grid squares.
 
 \C{mosaic} \i{Mosaic}
 
@@ -3586,7 +3616,7 @@ so it's not recommended for boards larger than, say, 30\times\.30.
 
 \A{licence} \I{MIT licence}\ii{Licence}
 
-This software is \i{copyright} 2004-2023 Simon Tatham.
+This software is \i{copyright} 2004-2024 Simon Tatham.
 
 Portions copyright Richard Boulton, James Harvey, Mike Pinna, Jonas
 K\u00F6{oe}lker, Dariusz Olszewski, Michael Schierl, Lambros Lambrou,

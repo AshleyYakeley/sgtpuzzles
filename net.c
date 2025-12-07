@@ -85,6 +85,11 @@ enum {
     NCOLOURS
 };
 
+enum {
+  PREF_UNLOCKED_LOOPS,
+  N_PREF_ITEMS
+};
+
 struct game_params {
     int width;
     int height;
@@ -2041,6 +2046,9 @@ static game_ui *new_ui(const game_state *state)
         get_random_seed(&seed, &seedsize);
         ui->rs = random_new(seed, seedsize);
         sfree(seed);
+#ifdef USE_DRAGGING
+        ui->dragstartx = ui->dragstarty = ui->dragtilex = ui->dragtiley = -1;
+#endif
     } else {
         ui->rs = NULL;
     }
@@ -2089,22 +2097,23 @@ static config_item *get_prefs(game_ui *ui)
 {
     config_item *ret;
 
-    ret = snewn(2, config_item);
+    ret = snewn(N_PREF_ITEMS+1, config_item);
 
-    ret[0].name = "Highlight loops involving unlocked squares";
-    ret[0].kw = "unlocked-loops";
-    ret[0].type = C_BOOLEAN;
-    ret[0].u.boolean.bval = ui->unlocked_loops;
+    ret[PREF_UNLOCKED_LOOPS].name =
+        "Highlight loops involving unlocked squares";
+    ret[PREF_UNLOCKED_LOOPS].kw = "unlocked-loops";
+    ret[PREF_UNLOCKED_LOOPS].type = C_BOOLEAN;
+    ret[PREF_UNLOCKED_LOOPS].u.boolean.bval = ui->unlocked_loops;
 
-    ret[1].name = NULL;
-    ret[1].type = C_END;
+    ret[N_PREF_ITEMS].name = NULL;
+    ret[N_PREF_ITEMS].type = C_END;
 
     return ret;
 }
 
 static void set_prefs(game_ui *ui, const config_item *cfg)
 {
-    ui->unlocked_loops = cfg[0].u.boolean.bval;
+    ui->unlocked_loops = cfg[PREF_UNLOCKED_LOOPS].u.boolean.bval;
 }
 
 static void game_changed_state(game_ui *ui, const game_state *oldstate,
@@ -2145,7 +2154,7 @@ static char *interpret_move(const game_state *state, game_ui *ui,
         MOVE_ORIGIN, MOVE_SOURCE, MOVE_ORIGIN_AND_SOURCE, MOVE_CURSOR
     } action;
 
-    button &= ~MOD_MASK;
+    button = STRIP_BUTTON_MODIFIERS(button);
     nullret = NULL;
     action = NONE;
 
@@ -2169,12 +2178,22 @@ static char *interpret_move(const game_state *state, game_ui *ui,
 	 */
 	x -= WINDOW_OFFSET + LINE_THICK;
 	y -= WINDOW_OFFSET + LINE_THICK;
-	if (x < 0 || y < 0)
-	    return nullret;
 	tx = x / TILE_SIZE;
 	ty = y / TILE_SIZE;
-	if (tx >= state->width || ty >= state->height)
+	if (x < 0 || y < 0 || tx >= state->width || ty >= state->height) {
+#ifdef USE_DRAGGING
+	    if (IS_MOUSE_DOWN(button)) {
+	        ui->dragstartx = ui->dragstarty = ui->dragtilex = ui->dragtiley = -1;
+	        return nullret;
+	    }
+	    /*
+	     * else: Despite the mouse moving off the grid, let drags and releases
+	     * continue to manipulate the tile they started from.
+	     */
+#else
 	    return nullret;
+#endif
+        }
         /* Transform from physical to game coords */
         tx = (tx + ui->org_x) % state->width;
         ty = (ty + ui->org_y) % state->height;
@@ -2212,6 +2231,9 @@ static char *interpret_move(const game_state *state, game_ui *ui,
                    || button == RIGHT_DRAG
 #endif
                   ) {
+            if (ui->dragtilex < 0)
+                return nullret;
+
             /*
              * Find the new drag point and see if it necessitates a
              * rotation.
@@ -2265,7 +2287,7 @@ static char *interpret_move(const game_state *state, game_ui *ui,
                    || button == RIGHT_RELEASE
 #endif
                   ) {
-            if (!ui->dragged) {
+            if (!ui->dragged && ui->dragtilex >= 0) {
                 /*
                  * There was a click but no perceptible drag:
                  * revert to single-click behaviour.
@@ -3313,6 +3335,7 @@ const struct game thegame = {
     new_game_desc,
     validate_desc,
     new_game,
+    NULL, /* set_public_desc */
     dup_game,
     free_game,
     true, solve_game,

@@ -72,16 +72,11 @@
 
 static bool verbose;
 
-static void printv(const char *fmt, ...) {
-#ifndef PALM
-    if (verbose) {
-	va_list va;
-	va_start(va, fmt);
-	vprintf(fmt, va);
-	va_end(va);
-    }
+#ifdef STANDALONE_SOLVER
+#define printv    if (!verbose); else printf
+#else
+#define printv(...)
 #endif
-}
 
 /*****************************************************************************
  * GAME CONFIGURATION AND PARAMETERS                                         *
@@ -1307,17 +1302,17 @@ static const char *validate_desc(const game_params *params, const char *desc)
 static key_label *game_request_keys(const game_params *params, int *nkeys)
 {
     int i;
-    key_label *keys = snewn(11, key_label);
+    key_label *keys = snewn(10, key_label);
 
-    *nkeys = 11;
+    *nkeys = 10;
 
-    for(i = 0; i < 10; ++i)
+    for(i = 0; i < 9; ++i)
     {
-	keys[i].button = '0' + i;
+	keys[i].button = '1' + i;
 	keys[i].label = NULL;
     }
-    keys[10].button = '\b';
-    keys[10].label = NULL;
+    keys[9].button = '\b';
+    keys[9].label = NULL;
 
     return keys;
 }
@@ -1474,7 +1469,7 @@ static char *interpret_move(const game_state *state, game_ui *ui,
     assert(ui);
     assert(ds);
 
-    button &= ~MOD_MASK;
+    button = STRIP_BUTTON_MODIFIERS(button);
 
     if (button == LEFT_BUTTON || button == LEFT_DRAG) {
         /* A left-click anywhere will clear the current selection. */
@@ -1539,13 +1534,15 @@ static char *interpret_move(const game_state *state, game_ui *ui,
 	return MOVE_UI_UPDATE;
     }
 
-    if (button == '\b' || button == 27) {
+    if (button == 27) {   /* Esc just cancels the current selection */
 	sfree(ui->sel);
 	ui->sel = NULL;
 	ui->keydragging = false;
 	return MOVE_UI_UPDATE;
     }
 
+    if (button == '\b')
+        button = '0'; /* Backspace clears the current selection, like '0' */
     if (button < '0' || button > '9') return MOVE_UNUSED;
     button -= '0';
     if (button > (w == 2 && h == 2 ? 3 : max(w, h))) return MOVE_UNUSED;
@@ -2170,6 +2167,7 @@ const struct game thegame = {
     new_game_desc,
     validate_desc,
     new_game,
+    NULL, /* set_public_desc */
     dup_game,
     free_game,
     true, solve_game,
@@ -2202,6 +2200,11 @@ const struct game thegame = {
 #ifdef STANDALONE_SOLVER /* solver? hah! */
 
 int main(int argc, char **argv) {
+    if (!strcmp(argv[1], "--verbose")) {
+	verbose = true;
+	argv++;
+    }
+
     while (*++argv) {
         game_params *params;
         game_state *state;

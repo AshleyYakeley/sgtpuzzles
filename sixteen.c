@@ -180,7 +180,8 @@ static const char *validate_params(const game_params *params, bool full)
 	return "Width and height must both be at least two";
     if (params->w > INT_MAX / params->h)
         return "Width times height must not be unreasonably large";
-
+    if (params->movetarget < 0)
+        return "Number of shuffling moves may not be negative";
     return NULL;
 }
 
@@ -621,7 +622,7 @@ static char *interpret_move(const game_state *state, game_ui *ui,
     bool shift = button & MOD_SHFT, control = button & MOD_CTRL;
     int pad = button & MOD_NUM_KEYPAD;
 
-    button &= ~MOD_MASK;
+    button = STRIP_BUTTON_MODIFIERS(button);
 
     if (IS_CURSOR_MOVE(button) || pad) {
         if (!ui->cur_visible) {
@@ -1187,6 +1188,7 @@ const struct game thegame = {
     new_game_desc,
     validate_desc,
     new_game,
+    NULL, /* set_public_desc */
     dup_game,
     free_game,
     true, solve_game,

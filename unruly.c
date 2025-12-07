@@ -1614,7 +1614,7 @@ static char *interpret_move(const game_state *state, game_ui *ui,
 
     char *nullret = MOVE_NO_EFFECT;
 
-    button &= ~MOD_MASK;
+    button = STRIP_BUTTON_MODIFIERS(button);
 
     /* Mouse click */
     if (button == LEFT_BUTTON || button == RIGHT_BUTTON ||
@@ -2031,6 +2031,7 @@ const struct game thegame = {
     new_game_desc,
     validate_desc,
     new_game,
+    NULL, /* set_public_desc */
     dup_game,
     free_game,
     true, solve_game,

@@ -1576,7 +1576,7 @@ static char *interpret_move(const game_state *state, game_ui *ui,
     char tmpbuf[80];
     bool shift = button & MOD_SHFT, control = button & MOD_CTRL;
 
-    button &= ~MOD_MASK;
+    button = STRIP_BUTTON_MODIFIERS(button);
 
     if (button == LEFT_BUTTON || button == RIGHT_BUTTON) {
         x = FROMCOORD(x);
@@ -2647,6 +2647,7 @@ const struct game thegame = {
     new_game_desc,
     validate_desc,
     new_game,
+    NULL, /* set_public_desc */
     dup_game,
     free_game,
     true, solve_game,

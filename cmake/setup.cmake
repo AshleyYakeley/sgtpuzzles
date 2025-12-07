@@ -7,6 +7,12 @@ set(build_cli_programs TRUE)
 set(build_gui_programs TRUE)
 set(build_icons FALSE)
 set(need_c_icons FALSE)
+option(BUILD_SDL_PROGRAMS "build test programs requiring SDL" FALSE)
+
+option(USE_DRAW_POLYGON_FALLBACK "force frontend to use fallback software polygon rasterizer" off)
+if(USE_DRAW_POLYGON_FALLBACK)
+  add_compile_definitions(USE_DRAW_POLYGON_FALLBACK)
+endif()
 
 # Don't disable assertions, even in release mode.  Our assertions
 # generally aren't expensive and protect against more annoying crashes
@@ -78,7 +84,7 @@ function(map_pathname src dst)
       PARENT_SCOPE)
   endif()
 endfunction()
-map_pathname(${CMAKE_SOURCE_DIR} /puzzles)
+map_pathname(${PUZZLES_ROOT_DIR} /puzzles)
 map_pathname(${CMAKE_BINARY_DIR} /build)
 
 include(icons/icons.cmake)
@@ -113,7 +119,7 @@ function(puzzle NAME)
     # collection.
     set(official FALSE)
   endif()
-  if(${CMAKE_CURRENT_SOURCE_DIR} STREQUAL ${CMAKE_SOURCE_DIR}/unfinished)
+  if(${CMAKE_CURRENT_SOURCE_DIR} STREQUAL ${PUZZLES_ROOT_DIR}/unfinished)
     # The same goes for puzzles in the 'unfinished' subdirectory,
     # although we make an exception if configured to on the command
     # line.
@@ -128,7 +134,7 @@ function(puzzle NAME)
     set(puzzle_sources ${puzzle_sources} ${CMAKE_CURRENT_SOURCE_DIR}/${NAME}.c PARENT_SCOPE)
   endif()
 
-  get_platform_puzzle_extra_source_files(extra_files ${NAME})
+  get_platform_puzzle_extra_source_files(extra_files ${NAME} FALSE)
 
   if (build_individual_puzzles)
     add_executable(${EXENAME} ${NAME}.c ${extra_files})
@@ -148,7 +154,7 @@ endfunction()
 # a command-line helper tool.
 function(cliprogram NAME)
   cmake_parse_arguments(OPT
-    "CORE_LIB" "" "COMPILE_DEFINITIONS" ${ARGN})
+    "CORE_LIB;SDL2_LIB" "" "COMPILE_DEFINITIONS" ${ARGN})
 
   if(OPT_CORE_LIB)
     set(lib core)
@@ -156,12 +162,17 @@ function(cliprogram NAME)
     set(lib common)
   endif()
 
-  if(build_cli_programs)
-    add_executable(${NAME} ${CMAKE_SOURCE_DIR}/nullfe.c
+  if(build_cli_programs AND ((NOT OPT_SDL2_LIB) OR BUILD_SDL_PROGRAMS))
+    add_executable(${NAME} ${PUZZLES_ROOT_DIR}/nullfe.c
       ${OPT_UNPARSED_ARGUMENTS})
     target_link_libraries(${NAME} ${lib} ${platform_libs})
     if(OPT_COMPILE_DEFINITIONS)
       target_compile_definitions(${NAME} PRIVATE ${OPT_COMPILE_DEFINITIONS})
+    endif()
+    if(OPT_SDL2_LIB)
+      find_package(SDL2 REQUIRED)
+      include_directories(${NAME} ${SDL2_INCLUDE_DIRS})
+      target_link_libraries(${NAME} ${SDL2_LIBRARIES})
     endif()
   endif()
 endfunction()
@@ -173,7 +184,7 @@ function(guiprogram NAME)
     "" "" "COMPILE_DEFINITIONS" ${ARGN})
 
   if(build_gui_programs)
-    get_platform_puzzle_extra_source_files(extra_files ${NAME})
+    get_platform_puzzle_extra_source_files(extra_files ${NAME} TRUE)
     add_executable(${NAME} ${OPT_UNPARSED_ARGUMENTS} ${extra_files})
     target_link_libraries(${NAME}
       common ${platform_gui_libs} ${platform_libs})

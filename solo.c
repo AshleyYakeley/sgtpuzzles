@@ -140,6 +140,11 @@ enum {
     NCOLOURS
 };
 
+enum {
+    PREF_PENCIL_KEEP_HIGHLIGHT,
+    N_PREF_ITEMS
+};
+
 /*
  * To determine all possible ways to reach a given sum by adding two or
  * three numbers from 1..9, each of which occurs exactly once in the sum,
@@ -4592,22 +4597,23 @@ static config_item *get_prefs(game_ui *ui)
 {
     config_item *ret;
 
-    ret = snewn(2, config_item);
+    ret = snewn(N_PREF_ITEMS+1, config_item);
 
-    ret[0].name = "Keep mouse highlight after changing a pencil mark";
-    ret[0].kw = "pencil-keep-highlight";
-    ret[0].type = C_BOOLEAN;
-    ret[0].u.boolean.bval = ui->pencil_keep_highlight;
+    ret[PREF_PENCIL_KEEP_HIGHLIGHT].name =
+        "Keep mouse highlight after changing a pencil mark";
+    ret[PREF_PENCIL_KEEP_HIGHLIGHT].kw = "pencil-keep-highlight";
+    ret[PREF_PENCIL_KEEP_HIGHLIGHT].type = C_BOOLEAN;
+    ret[PREF_PENCIL_KEEP_HIGHLIGHT].u.boolean.bval = ui->pencil_keep_highlight;
 
-    ret[1].name = NULL;
-    ret[1].type = C_END;
+    ret[N_PREF_ITEMS].name = NULL;
+    ret[N_PREF_ITEMS].type = C_END;
 
     return ret;
 }
 
 static void set_prefs(game_ui *ui, const config_item *cfg)
 {
-    ui->pencil_keep_highlight = cfg[0].u.boolean.bval;
+    ui->pencil_keep_highlight = cfg[PREF_PENCIL_KEEP_HIGHLIGHT].u.boolean.bval;
 }
 
 static void game_changed_state(game_ui *ui, const game_state *oldstate,
@@ -4653,7 +4659,7 @@ static char *interpret_move(const game_state *state, game_ui *ui,
     int tx, ty;
     char buf[80];
 
-    button &= ~MOD_MASK;
+    button = STRIP_BUTTON_MODIFIERS(button);
 
     tx = (x + TILE_SIZE - BORDER) / TILE_SIZE - 1;
     ty = (y + TILE_SIZE - BORDER) / TILE_SIZE - 1;
@@ -4986,6 +4992,18 @@ static void draw_number(drawing *dr, game_drawstate *ds,
 	       (ds->xtype && (ondiag0(y*cr+x) || ondiag1(y*cr+x))) ? COL_XDIAGONALS :
 	       COL_BACKGROUND));
 
+    /* pencil-mode highlight */
+    if ((hl & 15) == 2) {
+        int coords[6];
+        coords[0] = cx;
+        coords[1] = cy;
+        coords[2] = cx+cw/2;
+        coords[3] = cy;
+        coords[4] = cx;
+        coords[5] = cy+ch/2;
+        draw_polygon(dr, coords, 3, COL_HIGHLIGHT, COL_HIGHLIGHT);
+    }
+
     /*
      * Draw the corners of thick lines in corner-adjacent squares,
      * which jut into this square by one pixel.
@@ -4998,18 +5016,6 @@ static void draw_number(drawing *dr, game_drawstate *ds,
 	draw_rect(dr, tx-GRIDEXTRA, ty+TILE_SIZE-1-2*GRIDEXTRA, GRIDEXTRA, GRIDEXTRA, COL_GRID);
     if (x+1 < cr && y+1 < cr && state->blocks->whichblock[y*cr+x] != state->blocks->whichblock[(y+1)*cr+x+1])
 	draw_rect(dr, tx+TILE_SIZE-1-2*GRIDEXTRA, ty+TILE_SIZE-1-2*GRIDEXTRA, GRIDEXTRA, GRIDEXTRA, COL_GRID);
-
-    /* pencil-mode highlight */
-    if ((hl & 15) == 2) {
-        int coords[6];
-        coords[0] = cx;
-        coords[1] = cy;
-        coords[2] = cx+cw/2;
-        coords[3] = cy;
-        coords[4] = cx;
-        coords[5] = cy+ch/2;
-        draw_polygon(dr, coords, 3, COL_HIGHLIGHT, COL_HIGHLIGHT);
-    }
 
     if (state->kblocks) {
 	int t = GRIDEXTRA * 3;
@@ -5669,6 +5675,7 @@ const struct game thegame = {
     new_game_desc,
     validate_desc,
     new_game,
+    NULL, /* set_public_desc */
     dup_game,
     free_game,
     true, solve_game,

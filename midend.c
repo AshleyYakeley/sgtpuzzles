@@ -1214,21 +1214,25 @@ int midend_process_key(midend *me, int x, int y, int button)
 
     /* Canonicalise CTRL+ASCII. */
     if ((button & MOD_CTRL) &&
-        (button & ~MOD_MASK) >= 0x40 && (button & ~MOD_MASK) < 0x80)
+        STRIP_BUTTON_MODIFIERS(button) >= 0x40 &&
+        STRIP_BUTTON_MODIFIERS(button) < 0x80)
         button = button & (0x1f | (MOD_MASK & ~MOD_CTRL));
     /* Special handling to make CTRL+SHFT+Z into REDO. */
     if ((button & (~MOD_MASK | MOD_SHFT)) == (MOD_SHFT | '\x1A'))
         button = UI_REDO;
-    /* interpret_move() expects CTRL and SHFT only on cursor keys. */
-    if (!IS_CURSOR_MOVE(button & ~MOD_MASK)) {
+    /* interpret_move() expects CTRL and SHFT only on cursor keys, and
+     * TAB (added as of 7/2024 to support Untangle). */
+    if (!IS_CURSOR_MOVE(STRIP_BUTTON_MODIFIERS(button))) {
         /* reject CTRL+anything odd */
-        if ((button & MOD_CTRL) && (button & ~MOD_MASK) >= 0x20)
+        if ((button & MOD_CTRL) && STRIP_BUTTON_MODIFIERS(button) >= 0x20)
             return PKR_UNUSED;
-        /* otherwise strip them */
-        button &= ~(MOD_CTRL | MOD_SHFT);
+        /* otherwise strip them, except for tab */
+	if (STRIP_BUTTON_MODIFIERS(button) != '\t')
+	    button &= ~(MOD_CTRL | MOD_SHFT);
     }
     /* interpret_move() expects NUM_KEYPAD only on numbers. */
-    if ((button & ~MOD_MASK) < '0' || (button & ~MOD_MASK) > '9')
+    if (STRIP_BUTTON_MODIFIERS(button) < '0' ||
+	STRIP_BUTTON_MODIFIERS(button) > '9')
         button &= ~MOD_NUM_KEYPAD;
     /*
      * Translate keyboard presses to cursor selection.
@@ -2567,8 +2571,15 @@ static const char *midend_deserialise_internal(
         ret = "No state count provided in save file";
         goto cleanup;
     }
-    data.states[0].state = me->ourgame->new_game(
-        me, data.cparams, data.privdesc ? data.privdesc : data.desc);
+    if (data.privdesc) {
+        data.states[0].state = me->ourgame->new_game(
+            me, data.cparams, data.privdesc);
+        if (me->ourgame->set_public_desc)
+            me->ourgame->set_public_desc(data.states[0].state, data.desc);
+    } else {
+        data.states[0].state = me->ourgame->new_game(
+            me, data.cparams, data.desc);
+    }
 
     for (i = 1; i < data.nstates; i++) {
         assert(data.states[i].movetype != NEWGAME);

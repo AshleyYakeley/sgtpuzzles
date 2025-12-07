@@ -318,6 +318,8 @@ static const char *validate_params(const game_params *params, bool full)
 	return "Barrier probability may not be negative";
     if (params->barrier_probability > 1)
 	return "Barrier probability may not be greater than 1";
+    if (params->movetarget < 0)
+        return "Number of shuffling moves may not be negative";
     return NULL;
 }
 
@@ -1058,7 +1060,7 @@ static char *interpret_move(const game_state *state, game_ui *ui,
     int dx, dy;
     char buf[80];
 
-    button &= ~MOD_MASK;
+    button = STRIP_BUTTON_MODIFIERS(button);
 
     if (IS_CURSOR_MOVE(button)) {
         int cpos, diff = 0;
@@ -1854,6 +1856,7 @@ const struct game thegame = {
     new_game_desc,
     validate_desc,
     new_game,
+    NULL, /* set_public_desc */
     dup_game,
     free_game,
     true, solve_game,

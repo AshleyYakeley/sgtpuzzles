@@ -4,7 +4,7 @@
 
     inputs =
     {
-        nixpkgs.url = "github:nixos/nixpkgs/nixos-23.05";
+        nixpkgs.url = "github:nixos/nixpkgs/nixos-25.11";
         sgt-puzzles-menu =
         {
             url = "https://raw.githubusercontent.com/gentoo/gentoo/720e614d0107e86fc1e520bac17726578186843d/games-puzzle/sgt-puzzles/files/sgt-puzzles.menu";
@@ -29,7 +29,7 @@
                 imagemagick
                 perl
                 pkg-config
-                wrapGAppsHook
+                wrapGAppsHook3
             ];
 
             #env.NIX_CFLAGS_COMPILE = lib.optionalString isMobile "-DSTYLUS_BASED";
